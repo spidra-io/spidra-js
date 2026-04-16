@@ -1,0 +1,39 @@
+{
+  "name": "spidra",
+  "version": "0.1.0",
+  "description": "Official JavaScript SDK for the Spidra web scraping API",
+  "keywords": ["spidra", "web scraping", "scraping", "crawling", "ai"],
+  "homepage": "https://spidra.io",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/spidra-io/spidra-js"
+  },
+  "license": "MIT",
+  "author": "Spidra <hello@spidra.io>",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "prepare": "npm run build",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
