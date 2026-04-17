@@ -9,6 +9,8 @@ export interface BatchScrapeParams {
   proxyCountry?: ProxyCountry;
   extractContentOnly?: boolean;
   screenshot?: boolean;
+  fullPageScreenshot?: boolean;
+  cookies?: string;
 }
 
 export interface BatchScrapeQueued {
@@ -17,11 +19,12 @@ export interface BatchScrapeQueued {
   total: number;
 }
 
-export type BatchItemStatus = "pending" | "active" | "completed" | "failed";
+export type BatchItemStatus = "pending" | "running" | "completed" | "failed";
 
 export interface BatchItem {
   uuid: string;
   url: string;
+  jobId: string | null;
   status: BatchItemStatus;
   result: unknown | null;
   error?: string | null;
@@ -31,7 +34,7 @@ export interface BatchItem {
   screenshotUrl: string | null;
 }
 
-export type BatchStatus = "pending" | "active" | "completed" | "failed" | "cancelled";
+export type BatchStatus = "pending" | "running" | "completed" | "failed" | "cancelled";
 
 export interface BatchScrapeResponse {
   status: BatchStatus;
@@ -41,4 +44,37 @@ export interface BatchScrapeResponse {
   createdAt: string;
   finishedAt: string | null;
   items: BatchItem[];
+}
+
+export interface BatchCancelResponse {
+  status: "cancelled";
+  cancelledItems: number;
+  creditsRefunded: number;
+}
+
+export interface BatchListParams {
+  page?: number;
+  limit?: number;
+}
+
+export interface BatchListEntry {
+  uuid: string;
+  status: BatchStatus;
+  totalUrls: number;
+  completedCount: number;
+  failedCount: number;
+  outputFormat: string;
+  scrapingChannel: string;
+  createdAt: string;
+  finishedAt: string | null;
+}
+
+export interface BatchListResponse {
+  jobs: BatchListEntry[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
 }

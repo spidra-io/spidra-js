@@ -21,23 +21,40 @@ export interface BrowserAction {
   type: BrowserActionType;
   selector?: string;
   value?: string;
+  /** Milliseconds to wait — used by the `wait` action */
   duration?: number;
+  /** Scroll destination as a percentage 0–100 e.g. `"80%"` — used by the `scroll` action */
   to?: string;
-  // forEach-specific
+  // forEach-specific fields
+  /** Natural language description of which elements to find e.g. `"Find all product cards"` */
   observe?: string;
-  mode?: "inline" | "navigate" | "click";
+  /** How to interact with each element (default: `"click"`) */
+  mode?: "click" | "inline" | "navigate";
+  /** CSS selector of the content container to capture after each interaction */
   captureSelector?: string;
+  /** Maximum number of elements to process (default: 50, hard cap: 50) */
   maxItems?: number;
+  /** Milliseconds to wait after clicking/navigating before capturing content (default: 2500) */
+  waitAfterClick?: number;
+  /** Per-element extraction prompt — runs AI on each item individually before combining */
   itemPrompt?: string;
+  /** Per-element actions to run after click/navigation */
+  actions?: BrowserAction[];
+  /** Paginate through "next page" links to collect more elements */
   pagination?: {
+    /** CSS selector or description of the "next page" button/link */
     nextSelector: string;
-    maxPages: number;
+    /** Maximum number of pages to paginate through (default: 5, hard cap: 10) */
+    maxPages?: number;
   };
 }
 
 export interface ScrapeUrl {
   url: string;
+  /** Step-by-step browser actions to run before extraction */
   actions?: BrowserAction[];
+  /** AI Navigate mode — a single natural language instruction that handles all interactions automatically */
+  instruction?: string;
 }
 
 export interface ScrapeParams {

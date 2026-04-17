@@ -1,5 +1,11 @@
 export { SpidraClient } from "./client.js";
-export { SpidraError } from "./lib/http.js";
+export {
+  SpidraError,
+  SpidraAuthenticationError,
+  SpidraInsufficientCreditsError,
+  SpidraRateLimitError,
+  SpidraServerError,
+} from "./lib/http.js";
 
 // Types
 export type { SpidraConfig } from "./types/client.js";
@@ -23,6 +29,10 @@ export type {
   BatchItem,
   BatchItemStatus,
   BatchStatus,
+  BatchCancelResponse,
+  BatchListParams,
+  BatchListEntry,
+  BatchListResponse,
 } from "./types/batch.js";
 export type {
   CrawlParams,
@@ -33,10 +43,16 @@ export type {
   CrawlPage,
   CrawlPagesResponse,
   CrawlPageResult,
+  CrawlHistoryParams,
+  CrawlHistoryEntry,
+  CrawlHistoryResponse,
+  CrawlStats,
 } from "./types/crawl.js";
 export type {
   ScrapeLogsParams,
   ScrapeLogsResponse,
   ScrapeLog,
+  ScrapeLogDetail,
 } from "./types/logs.js";
+export type { UsageRange, UsageStatRow } from "./types/usage.js";
 export type { PollOptions } from "./lib/poll.js";

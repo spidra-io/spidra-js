@@ -7,6 +7,7 @@ export interface CrawlParams {
   maxPages?: number;
   useProxy?: boolean;
   proxyCountry?: ProxyCountry;
+  cookies?: string;
 }
 
 export interface CrawlQueued {
@@ -53,4 +54,33 @@ export interface CrawlPage {
 
 export interface CrawlPagesResponse {
   pages: CrawlPage[];
+}
+
+export interface CrawlHistoryParams {
+  page?: number;
+  limit?: number;
+}
+
+export interface CrawlHistoryEntry {
+  id: string;
+  base_url: string;
+  crawl_instruction: string;
+  transform_instruction: string;
+  max_pages: number;
+  status: CrawlStatus;
+  created_at: string;
+  updated_at: string;
+  pages_crawled: number;
+  credits_used: number | null;
+}
+
+export interface CrawlHistoryResponse {
+  jobs: CrawlHistoryEntry[];
+  total: number;
+  page: number;
+  totalPages: number;
+}
+
+export interface CrawlStats {
+  total: number;
 }
