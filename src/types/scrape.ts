@@ -53,8 +53,6 @@ export interface ScrapeUrl {
   url: string;
   /** Step-by-step browser actions to run before extraction */
   actions?: BrowserAction[];
-  /** AI Navigate mode — a single natural language instruction that handles all interactions automatically */
-  instruction?: string;
 }
 
 export interface ScrapeParams {
