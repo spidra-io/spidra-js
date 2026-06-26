@@ -292,7 +292,7 @@ Both are optional and serve different purposes.
 |--|--|--|
 | When it runs | During scraping, once per item | After all items are collected |
 | What it sees | One item's content | All items combined |
-| Output location | `result.data[].markdownContent` | `result.content` |
+| Output location | Feeds into the top-level `prompt` | `result.content` |
 
 Use `itemPrompt` to extract fields from each item individually. Use the top-level `prompt` to filter, sort, or reshape the full combined output. They can be used together.
 
@@ -317,7 +317,7 @@ if (status.status === "completed") {
 }
 ```
 
-Job statuses: `waiting`, `active`, `completed`, `failed`.
+Job statuses: `queued`, `waiting`, `active`, `completed`, `failed`.
 
 ### Poll options
 
@@ -519,11 +519,12 @@ try {
   await spidra.scrape.run({ urls: [{ url: "https://example.com" }], prompt: "..." });
 } catch (err) {
   if (err instanceof SpidraAuthenticationError) {
-    // 401: API key is missing or invalid
+    // 401: No x-api-key header sent
     console.error("Check your API key");
   } else if (err instanceof SpidraInsufficientCreditsError) {
-    // 403: Monthly credit limit reached
-    console.error("Out of credits");
+    // 403: Invalid API key, or monthly credit limit reached
+    // Check err.message to distinguish: "Invalid token or API key" vs credits exhausted
+    console.error("Out of credits or invalid API key");
   } else if (err instanceof SpidraRateLimitError) {
     // 429: Too many requests
     console.error("Rate limited, back off and retry");
