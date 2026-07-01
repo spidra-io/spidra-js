@@ -3,8 +3,18 @@ import type { ProxyCountry } from "./scrape.js";
 export interface CrawlParams {
   baseUrl: string;
   crawlInstruction: string;
-  transformInstruction: string;
+  /** What to extract from each page, in plain language. When omitted and no `schema` is set, each page's `data` field contains the raw page markdown — no AI is called and no token credits are charged. */
+  transformInstruction?: string;
+  /** JSON Schema object defining the exact output structure for each page. */
+  schema?: Record<string, unknown>;
   maxPages?: number;
+  maxDepth?: number;
+  includePaths?: string[];
+  excludePaths?: string[];
+  allowSubdomains?: boolean;
+  crawlEntireDomain?: boolean;
+  ignoreQueryParams?: boolean;
+  webhookUrl?: string;
   useProxy?: boolean;
   proxyCountry?: ProxyCountry;
   cookies?: string;
@@ -15,17 +25,19 @@ export interface CrawlQueued {
   jobId: string;
 }
 
-export type CrawlStatus = "waiting" | "active" | "running" | "completed" | "failed";
+export type CrawlStatus = "waiting" | "active" | "running" | "completed" | "failed" | "cancelled";
 
 export interface CrawlPageResult {
   url: string;
   title?: string;
-  data: unknown;
+  data?: unknown;
+  html?: string | null;
+  markdown?: string | null;
 }
 
 export interface CrawlJobPending {
-  status: "waiting" | "active" | "running";
-  progress?: { message: string; progress: number };
+  status: "waiting" | "active" | "running" | "delayed";
+  progress?: { message: string; pagesCrawled: number; maxPages: number };
 }
 
 export interface CrawlJobCompleted {
@@ -38,17 +50,21 @@ export interface CrawlJobFailed {
   error?: string;
 }
 
-export type CrawlJobResponse = CrawlJobPending | CrawlJobCompleted | CrawlJobFailed;
+export interface CrawlJobCancelled {
+  status: "cancelled";
+}
+
+export type CrawlJobResponse = CrawlJobPending | CrawlJobCompleted | CrawlJobFailed | CrawlJobCancelled;
 
 export interface CrawlPage {
   id: string;
   url: string;
   title?: string;
   status: "success" | "failed";
-  data: unknown;
+  data?: unknown;
   error_message: string | null;
-  html_url: string | null;
-  markdown_url: string | null;
+  html: string | null;
+  markdown: string | null;
   created_at: string;
 }
 
@@ -83,4 +99,9 @@ export interface CrawlHistoryResponse {
 
 export interface CrawlStats {
   total: number;
+}
+
+export interface CrawlCancelResponse {
+  status: "cancelled";
+  jobId: string;
 }

@@ -37,8 +37,11 @@ export type {
 export type {
   CrawlParams,
   CrawlQueued,
+  CrawlStatus,
+  CrawlJobPending,
   CrawlJobCompleted,
   CrawlJobFailed,
+  CrawlJobCancelled,
   CrawlJobResponse,
   CrawlPage,
   CrawlPagesResponse,
@@ -47,6 +50,7 @@ export type {
   CrawlHistoryEntry,
   CrawlHistoryResponse,
   CrawlStats,
+  CrawlCancelResponse,
 } from "./types/crawl.js";
 export type {
   ScrapeLogsParams,

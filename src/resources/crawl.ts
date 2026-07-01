@@ -9,6 +9,7 @@ import type {
   CrawlHistoryParams,
   CrawlHistoryResponse,
   CrawlStats,
+  CrawlCancelResponse,
 } from "../types/crawl.js";
 
 export class CrawlResource {
@@ -50,6 +51,11 @@ export class CrawlResource {
     });
   }
 
+  /** Cancel a queued or running crawl job. Pages already processed are preserved. */
+  cancel(jobId: string): Promise<CrawlCancelResponse> {
+    return this.http.delete<CrawlCancelResponse>(`/crawl/${jobId}`);
+  }
+
   /** Submit a crawl job and wait for it to complete. */
   async run(
     params: CrawlParams,
@@ -61,6 +67,10 @@ export class CrawlResource {
 
     if (result.status === "failed") {
       throw new Error((result as { error?: string }).error ?? "Crawl job failed");
+    }
+
+    if (result.status === "cancelled") {
+      throw new Error("Crawl job was cancelled");
     }
 
     return result as CrawlJobCompleted;

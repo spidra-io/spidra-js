@@ -1,6 +1,6 @@
 {
   "name": "spidra",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "The official Node SDK for Spidra",
   "keywords": ["spidra", "web scraping", "scraping", "crawling", "ai"],
   "homepage": "https://spidra.io",
