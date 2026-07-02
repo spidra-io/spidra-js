@@ -407,31 +407,65 @@ for (const page of job.result) {
 }
 ```
 
+`transformInstruction` is optional. When omitted (and no `schema` is set), each page's `data` field contains the raw page markdown — no AI extraction is called and no token credits are charged for extraction.
+
+**All crawl parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `baseUrl` | `string` | **Required.** Starting URL for the crawl. |
+| `crawlInstruction` | `string` | Which pages to discover. Defaults to `"Find all pages on the website"`. |
+| `transformInstruction` | `string` | What to extract from each page. Omit to get raw markdown with no AI charges. |
+| `schema` | `object` | JSON Schema for structured per-page output. Root must be `type: "object"`. |
+| `maxPages` | `number` | Cap on pages crawled. |
+| `maxDepth` | `number` | Max link depth from the base URL. `0` = base URL only. |
+| `includePaths` | `string[]` | Only crawl pages whose path matches one of these patterns. |
+| `excludePaths` | `string[]` | Skip pages whose path matches any of these patterns. |
+| `allowSubdomains` | `boolean` | Follow links to subdomains of the base domain. |
+| `crawlEntireDomain` | `boolean` | Follow any link on the same root domain regardless of path. |
+| `ignoreQueryParams` | `boolean` | Treat URLs differing only by query string as the same page. |
+| `webhookUrl` | `string` | URL that receives POST notifications as the job progresses. |
+| `useProxy` | `boolean` | Route requests through a residential proxy. |
+| `proxyCountry` | `string` | Two-letter country code for geo-targeted proxy routing. |
+| `cookies` | `string` | Cookie string for authenticated crawls. |
+
 **Submit without waiting:**
 
 ```typescript
 const { jobId } = await spidra.crawl.submit({
-  baseUrl:              "https://example.com/docs",
-  crawlInstruction:     "Find all documentation pages",
-  transformInstruction: "Extract the page title and main content summary",
-  maxPages:             50,
+  baseUrl:          "https://example.com/docs",
+  crawlInstruction: "Find all documentation pages",
+  maxPages:         50,
 });
 
 // Check status later
 const status = await spidra.crawl.get(jobId);
 ```
 
+**Limit depth and scope:**
+
+```typescript
+const job = await spidra.crawl.run({
+  baseUrl:            "https://example.com/blog",
+  crawlInstruction:   "Find all blog posts",
+  maxDepth:           2,
+  includePaths:       ["/blog/"],
+  excludePaths:       ["/blog/tag/", "/blog/author/"],
+  ignoreQueryParams:  true,
+});
+```
+
 **Get signed download URLs for all crawled pages:**
 
-Each page includes `html_url` and `markdown_url` pointing to S3-signed URLs that expire after 1 hour.
+Each page includes `html` and `markdown` fields with S3-signed URLs that expire after 1 hour.
 
 ```typescript
 const { pages } = await spidra.crawl.pages(jobId);
 
 for (const page of pages) {
   console.log(page.url, page.status);
-  // Download raw HTML: page.html_url
-  // Download markdown: page.markdown_url
+  // Download raw HTML:  page.html
+  // Download markdown:  page.markdown
 }
 ```
 
