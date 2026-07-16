@@ -1,6 +1,6 @@
 {
   "name": "spidra",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "The official Node SDK for Spidra",
   "keywords": ["spidra", "web scraping", "scraping", "crawling", "ai"],
   "homepage": "https://spidra.io",
@@ -26,12 +26,24 @@
     "dev": "tsup --watch",
     "prepare": "npm run build",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src"
+    "lint": "eslint src",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "tsup": "^8.0.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "vitest": "^3.0.0",
+    "zod": "^4.0.0"
+  },
+  "peerDependencies": {
+    "zod": "^4.0.0 || ^3.25.0"
+  },
+  "peerDependenciesMeta": {
+    "zod": {
+      "optional": true
+    }
   },
   "engines": {
     "node": ">=18"

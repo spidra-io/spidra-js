@@ -1,5 +1,7 @@
 import type { HttpClient } from "../lib/http.js";
 import { poll, type PollOptions } from "../lib/poll.js";
+import { resolveSchemaParam, type InferSchemaOutput, type SchemaInput } from "../lib/schema.js";
+import { BatchWatcher, type WatchOptions } from "../lib/watcher.js";
 import type {
   BatchScrapeParams,
   BatchScrapeQueued,
@@ -22,13 +24,13 @@ export class BatchResource {
   }
 
   /** Submit a batch of URLs to scrape. Returns a batchId immediately. */
-  submit(params: BatchScrapeParams): Promise<BatchScrapeQueued> {
-    return this.http.post<BatchScrapeQueued>("/batch/scrape", params);
+  async submit(params: BatchScrapeParams): Promise<BatchScrapeQueued> {
+    return this.http.post<BatchScrapeQueued>("/batch/scrape", await resolveSchemaParam(params));
   }
 
   /** Get the current status of a batch job. */
-  get(batchId: string): Promise<BatchScrapeResponse> {
-    return this.http.get<BatchScrapeResponse>(`/batch/scrape/${batchId}`);
+  get<T = unknown>(batchId: string): Promise<BatchScrapeResponse<T>> {
+    return this.http.get<BatchScrapeResponse<T>>(`/batch/scrape/${batchId}`);
   }
 
   /** Retry failed items in a batch. */
@@ -44,12 +46,28 @@ export class BatchResource {
     return this.http.delete<BatchCancelResponse>(`/batch/scrape/${batchId}`);
   }
 
-  /** Submit a batch and wait for it to complete. */
-  async run(
-    params: BatchScrapeParams,
+  /**
+   * Submit a batch and wait for it to complete. The returned response may
+   * still contain failed items — check `failedCount` / per-item `status`.
+   */
+  async run<S extends SchemaInput = Record<string, unknown>>(
+    params: BatchScrapeParams<S>,
     options?: PollOptions
-  ): Promise<BatchScrapeResponse> {
+  ): Promise<BatchScrapeResponse<InferSchemaOutput<S>>> {
     const { batchId } = await this.submit(params);
-    return poll(() => this.get(batchId), options);
+    return poll(() => this.get<InferSchemaOutput<S>>(batchId), options, batchId);
+  }
+
+  /**
+   * Watch a batch job, receiving each item as it finishes:
+   *
+   * ```ts
+   * const watcher = client.batch.watch(batchId);
+   * watcher.on("item", (item) => console.log(item.url, item.status));
+   * const final = await watcher.wait();
+   * ```
+   */
+  watch<T = unknown>(batchId: string, options?: WatchOptions): BatchWatcher<T> {
+    return new BatchWatcher<T>(this, batchId, options);
   }
 }

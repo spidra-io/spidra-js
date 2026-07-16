@@ -1,3 +1,5 @@
+import type { SchemaInput } from "../lib/schema.js";
+
 export type OutputFormat = "json" | "markdown" | "text" | "table";
 export type ProxyCountry =
   | "us" | "gb" | "de" | "fr" | "jp" | "au" | "ca" | "br" | "in"
@@ -55,11 +57,12 @@ export interface ScrapeUrl {
   actions?: BrowserAction[];
 }
 
-export interface ScrapeParams {
+export interface ScrapeParams<S extends SchemaInput = SchemaInput> {
   urls: ScrapeUrl[];
   prompt: string;
   output?: OutputFormat;
-  schema?: Record<string, unknown>;
+  /** JSON Schema object — or a Zod v4 schema, converted automatically. */
+  schema?: S;
   useProxy?: boolean;
   proxyCountry?: ProxyCountry;
   extractContentOnly?: boolean;
@@ -85,8 +88,8 @@ export interface ScrapeUrlResult {
   screenshotUrl?: string | null;
 }
 
-export interface ScrapeResult {
-  content: unknown;
+export interface ScrapeResult<T = unknown> {
+  content: T;
   data: ScrapeUrlResult[];
   screenshots: string[];
   ai_extraction_failed: boolean;
@@ -104,10 +107,10 @@ export interface ScrapeJobPending {
   progress?: { message: string; progress: number };
 }
 
-export interface ScrapeJobCompleted {
+export interface ScrapeJobCompleted<T = unknown> {
   status: "completed";
   progress?: { message: string; progress: number };
-  result: ScrapeResult;
+  result: ScrapeResult<T>;
   error: null;
 }
 
@@ -116,7 +119,7 @@ export interface ScrapeJobFailed {
   error: string;
 }
 
-export type ScrapeJobResponse =
+export type ScrapeJobResponse<T = unknown> =
   | ScrapeJobPending
-  | ScrapeJobCompleted
+  | ScrapeJobCompleted<T>
   | ScrapeJobFailed;
