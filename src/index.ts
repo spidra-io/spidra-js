@@ -2,13 +2,24 @@ export { SpidraClient } from "./client.js";
 export {
   SpidraError,
   SpidraAuthenticationError,
+  SpidraPaymentRequiredError,
   SpidraInsufficientCreditsError,
+  SpidraNotFoundError,
+  SpidraValidationError,
   SpidraRateLimitError,
   SpidraServerError,
-} from "./lib/http.js";
+  SpidraJobError,
+  SpidraTimeoutError,
+  isRetryableError,
+} from "./lib/errors.js";
+export type { RateLimitInfo, SpidraErrorOptions } from "./lib/errors.js";
+export { verifySpidraWebhook } from "./lib/webhook.js";
+export { CrawlWatcher, BatchWatcher } from "./lib/watcher.js";
+export type { WatchOptions, CrawlWatcherEvents, BatchWatcherEvents } from "./lib/watcher.js";
 
 // Types
 export type { SpidraConfig } from "./types/client.js";
+export type { SchemaInput, InferSchemaOutput, ZodLikeSchema } from "./lib/schema.js";
 export type {
   ScrapeParams,
   ScrapeUrl,

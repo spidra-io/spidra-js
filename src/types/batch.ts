@@ -1,10 +1,12 @@
 import type { OutputFormat, ProxyCountry } from "./scrape.js";
+import type { SchemaInput } from "../lib/schema.js";
 
-export interface BatchScrapeParams {
+export interface BatchScrapeParams<S extends SchemaInput = SchemaInput> {
   urls: string[];
   prompt: string;
   output?: OutputFormat;
-  schema?: Record<string, unknown>;
+  /** JSON Schema object — or a Zod v4 schema, converted automatically. */
+  schema?: S;
   useProxy?: boolean;
   proxyCountry?: ProxyCountry;
   extractContentOnly?: boolean;
@@ -21,12 +23,12 @@ export interface BatchScrapeQueued {
 
 export type BatchItemStatus = "pending" | "running" | "completed" | "failed";
 
-export interface BatchItem {
+export interface BatchItem<T = unknown> {
   uuid: string;
   url: string;
   jobId: string | null;
   status: BatchItemStatus;
-  result: unknown | null;
+  result: T | null;
   error?: string | null;
   creditsUsed: number;
   startedAt: string | null;
@@ -36,14 +38,14 @@ export interface BatchItem {
 
 export type BatchStatus = "pending" | "running" | "completed" | "failed" | "cancelled";
 
-export interface BatchScrapeResponse {
+export interface BatchScrapeResponse<T = unknown> {
   status: BatchStatus;
   totalUrls: number;
   completedCount: number;
   failedCount: number;
   createdAt: string;
   finishedAt: string | null;
-  items: BatchItem[];
+  items: BatchItem<T>[];
 }
 
 export interface BatchCancelResponse {

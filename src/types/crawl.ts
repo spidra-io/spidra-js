@@ -1,12 +1,13 @@
 import type { ProxyCountry } from "./scrape.js";
+import type { SchemaInput } from "../lib/schema.js";
 
-export interface CrawlParams {
+export interface CrawlParams<S extends SchemaInput = SchemaInput> {
   baseUrl: string;
   crawlInstruction: string;
   /** What to extract from each page, in plain language. When omitted and no `schema` is set, each page's `data` field contains the raw page markdown — no AI is called and no token credits are charged. */
   transformInstruction?: string;
-  /** JSON Schema object defining the exact output structure for each page. */
-  schema?: Record<string, unknown>;
+  /** JSON Schema object defining the exact output structure for each page — or a Zod v4 schema, converted automatically. */
+  schema?: S;
   maxPages?: number;
   maxDepth?: number;
   includePaths?: string[];
@@ -27,10 +28,10 @@ export interface CrawlQueued {
 
 export type CrawlStatus = "waiting" | "active" | "running" | "completed" | "failed" | "cancelled";
 
-export interface CrawlPageResult {
+export interface CrawlPageResult<T = unknown> {
   url: string;
   title?: string;
-  data?: unknown;
+  data?: T;
   html?: string | null;
   markdown?: string | null;
 }
@@ -40,9 +41,9 @@ export interface CrawlJobPending {
   progress?: { message: string; pagesCrawled: number; maxPages: number };
 }
 
-export interface CrawlJobCompleted {
+export interface CrawlJobCompleted<T = unknown> {
   status: "completed";
-  result: CrawlPageResult[];
+  result: CrawlPageResult<T>[];
 }
 
 export interface CrawlJobFailed {
@@ -54,22 +55,26 @@ export interface CrawlJobCancelled {
   status: "cancelled";
 }
 
-export type CrawlJobResponse = CrawlJobPending | CrawlJobCompleted | CrawlJobFailed | CrawlJobCancelled;
+export type CrawlJobResponse<T = unknown> =
+  | CrawlJobPending
+  | CrawlJobCompleted<T>
+  | CrawlJobFailed
+  | CrawlJobCancelled;
 
-export interface CrawlPage {
+export interface CrawlPage<T = unknown> {
   id: string;
   url: string;
   title?: string;
   status: "success" | "failed";
-  data?: unknown;
+  data?: T;
   error_message: string | null;
   html: string | null;
   markdown: string | null;
   created_at: string;
 }
 
-export interface CrawlPagesResponse {
-  pages: CrawlPage[];
+export interface CrawlPagesResponse<T = unknown> {
+  pages: CrawlPage<T>[];
 }
 
 export interface CrawlHistoryParams {

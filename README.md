@@ -37,6 +37,7 @@ console.log(job.result.content);
   - [Scraping](#scraping)
     - [Basic scrape](#basic-scrape)
     - [Structured output with JSON schema](#structured-output-with-json-schema)
+    - [Structured output with Zod](#structured-output-with-zod)
     - [Geo-targeted scraping](#geo-targeted-scraping)
     - [Authenticated pages](#authenticated-pages)
     - [Browser actions](#browser-actions)
@@ -51,9 +52,12 @@ console.log(job.result.content);
     - [Poll options](#poll-options)
   - [Batch scraping](#batch-scraping)
   - [Crawling](#crawling)
+  - [Watching jobs (streaming results)](#watching-jobs-streaming-results)
   - [Logs](#logs)
   - [Usage statistics](#usage-statistics)
+  - [Retries and reliability](#retries-and-reliability)
   - [Error handling](#error-handling)
+  - [Verifying webhooks](#verifying-webhooks)
   - [AI agent integration](#ai-agent-integration)
 
 ## Scraping
@@ -79,6 +83,8 @@ console.log(job.result.content);
 
 When you need a guaranteed shape, pass a `schema`. The API will enforce the structure and return `null` for any missing fields rather than hallucinating values.
 
+> Define every field you want extracted — an untyped `object` with no `properties` gives the AI nothing to fill in, so those members come back empty.
+
 ```typescript
 const job = await spidra.scrape.run({
   urls: [{ url: "https://jobs.example.com/senior-engineer" }],
@@ -98,6 +104,32 @@ const job = await spidra.scrape.run({
   },
 });
 ```
+
+### Structured output with Zod
+
+You can pass a [Zod](https://zod.dev) (v4) schema directly instead of hand-writing JSON Schema — the SDK converts it automatically, and `result.content` is fully typed from your schema.
+
+```typescript
+import { z } from "zod";
+
+const JobListing = z.object({
+  title:   z.string(),
+  company: z.string(),
+  remote:  z.boolean().nullable(),
+  skills:  z.array(z.string()),
+});
+
+const job = await spidra.scrape.run({
+  urls:   [{ url: "https://jobs.example.com/senior-engineer" }],
+  prompt: "Extract the job listing details",
+  output: "json",
+  schema: JobListing,
+});
+
+job.result.content.title; // typed as string — no casting needed
+```
+
+The same works for `batch.run()` (types each item's `result`) and `crawl.run()` (types each page's `data`). Zod is an optional peer dependency — install it only if you use this (`npm install zod`). Passing `MySchema.shape` by mistake throws a helpful error.
 
 ### Geo-targeted scraping
 
@@ -324,11 +356,17 @@ Job statuses: `queued`, `waiting`, `active`, `completed`, `failed`.
 `scrape.run()`, `batch.run()`, and `crawl.run()` accept an optional second argument to control polling behavior.
 
 ```typescript
+const controller = new AbortController();
+
 const job = await spidra.scrape.run(params, {
-  pollInterval: 3000,    // ms between status checks (default: 3000)
-  timeout:      120_000, // max wait time in ms before throwing (default: 120000)
+  pollInterval: 3000,        // ms between status checks (default: 3000)
+  timeout:      600_000,     // max wait in ms before SpidraTimeoutError (default: null — wait until the job finishes)
+  signal:       controller.signal, // stop waiting (the job itself keeps running)
+  maxConsecutiveErrors: 3,   // transient errors (5xx/429/network) tolerated mid-poll (default: 3)
 });
 ```
+
+By default there is no timeout — `run()` waits until the job reaches a terminal state, so long crawls just work. If you set a `timeout` and it fires, the SDK throws `SpidraTimeoutError`; the job keeps running server-side, so you can keep checking it with `.get()` or cancel it. Transient errors during polling (a 502 blip, a dropped connection) don't kill the wait — polling continues unless several happen in a row.
 
 ## Batch scraping
 
@@ -494,6 +532,46 @@ const { jobs, total, page, totalPages } = await spidra.crawl.history({
 const { total: totalCrawls } = await spidra.crawl.stats();
 ```
 
+## Watching jobs (streaming results)
+
+For long-running crawls and batches, `watch()` gives you each result as it lands instead of one snapshot at the end. It polls under the hood but only re-fetches page content when progress actually changes.
+
+```typescript
+const { jobId } = await spidra.crawl.submit({
+  baseUrl:              "https://competitor.com/blog",
+  crawlInstruction:     "Find all blog posts",
+  transformInstruction: "Extract title, author, and publish date",
+  maxPages:             50,
+});
+
+const watcher = spidra.crawl.watch(jobId);
+
+watcher.on("page", (page) => {
+  // fires once per crawled page, as soon as it is available
+  console.log(page.url, page.data);
+});
+watcher.on("snapshot", (status) => {
+  if ("progress" in status && status.progress) {
+    console.log(`${status.progress.pagesCrawled}/${status.progress.maxPages} pages`);
+  }
+});
+watcher.on("error", (err) => console.error(err));
+
+const final = await watcher.wait(); // terminal response, or null if you called watcher.stop()
+```
+
+Batch works the same way, with an `item` event per finished URL:
+
+```typescript
+const { batchId } = await spidra.batch.submit({ urls, prompt: "Extract product data" });
+
+const watcher = spidra.batch.watch(batchId);
+watcher.on("item", (item) => console.log(item.url, item.status, item.result));
+await watcher.wait();
+```
+
+Events: `snapshot` (every poll), `page`/`item` (each result exactly once — including ones that already existed when you started watching), `done` (job reached a terminal state), `error` (non-recoverable error or timeout). `watch()` accepts the same options as polling (`pollInterval`, `timeout`, `signal`) and `watcher.stop()` stops watching without cancelling the job.
+
 ## Logs
 
 Scrape logs are stored for every job that runs through the API.
@@ -535,6 +613,24 @@ for (const row of rows) {
 }
 ```
 
+## Retries and reliability
+
+Transient failures — network blips, 502/503/504 gateway errors — are retried automatically with exponential backoff, so a single hiccup never fails your call. Both knobs are configurable on the client:
+
+```typescript
+const spidra = new SpidraClient({
+  apiKey:        "spd_YOUR_API_KEY",
+  maxRetries:    3,   // retry attempts for transient failures (default: 3, 0 disables)
+  backoffFactor: 500, // base backoff in ms — delay is backoffFactor * 2^attempt (default: 500)
+});
+```
+
+Safety rules the SDK follows so retries never double-charge you:
+
+- 4xx client errors are never retried.
+- Job submissions (POSTs) are only retried when the server explicitly rejected them (502/503) — never on network errors or 504s, where the job may already have been queued.
+- When the server sends a `Retry-After` hint (e.g. a 503 `SERVICE_BUSY`), the SDK honors it instead of its own backoff.
+
 ## Error handling
 
 Every API error throws a typed error class. Catch the specific class you care about or fall back to the base `SpidraError`.
@@ -544,27 +640,40 @@ import {
   SpidraClient,
   SpidraError,
   SpidraAuthenticationError,
+  SpidraPaymentRequiredError,
   SpidraInsufficientCreditsError,
+  SpidraNotFoundError,
+  SpidraValidationError,
   SpidraRateLimitError,
   SpidraServerError,
+  SpidraJobError,
+  SpidraTimeoutError,
 } from "spidra";
 
 try {
   await spidra.scrape.run({ urls: [{ url: "https://example.com" }], prompt: "..." });
 } catch (err) {
   if (err instanceof SpidraAuthenticationError) {
-    // 401: No x-api-key header sent
+    // 401: Missing or invalid Authorization header
     console.error("Check your API key");
   } else if (err instanceof SpidraInsufficientCreditsError) {
-    // 403: Invalid API key, or monthly credit limit reached
-    // Check err.message to distinguish: "Invalid token or API key" vs credits exhausted
-    console.error("Out of credits or invalid API key");
+    // 403: Monthly credit limit reached
+    console.error("Out of credits");
+  } else if (err instanceof SpidraValidationError) {
+    // 422: Bad request body — err.errors lists each problem
+    console.error(err.errors);
   } else if (err instanceof SpidraRateLimitError) {
-    // 429: Too many requests
-    console.error("Rate limited, back off and retry");
+    // 429: Too many requests — metadata tells you exactly how long to wait
+    console.error(`Rate limited. ${err.remaining}/${err.limit} left, retry in ${err.retryAfterMs}ms`);
+  } else if (err instanceof SpidraJobError) {
+    // The job itself failed or was cancelled (not a transport error)
+    console.error(`Job ${err.jobId} ${err.jobStatus}: ${err.message}`);
+  } else if (err instanceof SpidraTimeoutError) {
+    // Your poll timeout elapsed — the job is still running server-side
+    console.error(`Still running after ${err.timeoutMs}ms, check ${err.jobId} later`);
   } else if (err instanceof SpidraServerError) {
-    // 500: Something went wrong on Spidra's side
-    console.error("Server error, try again");
+    // 5xx: Something went wrong on Spidra's side (already retried automatically)
+    console.error("Server error");
   } else if (err instanceof SpidraError) {
     // Any other API error
     console.error(`${err.status}: ${err.message}`);
@@ -572,7 +681,34 @@ try {
 }
 ```
 
-All error classes expose `err.status` (HTTP status code) and `err.message`.
+Every error class exposes `err.status` (HTTP status code, or `0` for non-HTTP errors like job failures and timeouts) and `err.message`. API errors additionally carry `err.code` (machine-readable code like `SERVICE_BUSY` or `TOO_MANY_PENDING_JOBS`) and `err.details` (the raw error body). `SpidraRateLimitError` carries `limit`, `remaining`, `resetAt`, and `retryAfterMs` parsed from the response headers. Other classes: `SpidraPaymentRequiredError` (402) and `SpidraNotFoundError` (404).
+
+## Verifying webhooks
+
+Crawl jobs can push `crawl.page`, `crawl.completed`, and `crawl.failed` events to your `webhookUrl`. Spidra signs each delivery with HMAC-SHA256 in the `X-Spidra-Signature` header, and the SDK ships a verification helper:
+
+```typescript
+import { verifySpidraWebhook } from "spidra";
+
+// Express example — use the RAW body, not the parsed JSON
+app.post("/webhooks/spidra", express.raw({ type: "application/json" }), async (req, res) => {
+  const valid = await verifySpidraWebhook(
+    req.body, // raw bytes/string of the request body
+    req.header("x-spidra-signature"),
+    process.env.SPIDRA_WEBHOOK_SECRET!
+  );
+
+  if (!valid) return res.status(401).end();
+
+  const event = JSON.parse(req.body.toString());
+  if (event.event === "crawl.page") {
+    console.log("New page:", event.page.url);
+  }
+  res.status(200).end();
+});
+```
+
+The comparison is constant-time, and the helper works in Node, browsers, and edge runtimes (it uses WebCrypto). Always pass the raw request body — re-serializing parsed JSON produces different bytes and fails verification.
 
 ## AI agent integration
 
