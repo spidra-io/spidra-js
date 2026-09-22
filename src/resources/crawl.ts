@@ -13,6 +13,8 @@ import type {
   CrawlHistoryResponse,
   CrawlStats,
   CrawlCancelResponse,
+  CrawlJobDetails,
+  CrawlRetryPageResponse,
 } from "../types/crawl.js";
 
 export class CrawlResource {
@@ -57,6 +59,32 @@ export class CrawlResource {
   /** Cancel a queued or running crawl job. Pages already processed are preserved. */
   cancel(jobId: string): Promise<CrawlCancelResponse> {
     return this.http.delete<CrawlCancelResponse>(`/crawl/${jobId}`);
+  }
+
+  /** Get a flat details snapshot for a crawl job (config + counters), distinct from `get()`'s job-queue poll shape. */
+  jobDetails(jobId: string): Promise<CrawlJobDetails> {
+    return this.http.get<CrawlJobDetails>(`/crawl/job/${jobId}`);
+  }
+
+  /**
+   * Re-run the AI transformation for one already-crawled page, using the crawl job's own
+   * `transformInstruction`. Useful when a page's extraction failed or needs a retry.
+   *
+   * Note: on failure the backend returns `{ error }` rather than `{ message }`, so the
+   * thrown `SpidraError`'s `.message` may just be the HTTP status text — read `.details.error`
+   * for the real reason.
+   */
+  retryPage<T = unknown>(jobId: string, pageId: string): Promise<CrawlRetryPageResponse<T>> {
+    return this.http.post<CrawlRetryPageResponse<T>>(`/crawl/${jobId}/retry/${pageId}`, {});
+  }
+
+  /**
+   * Download a completed crawl's successful pages as a zip.
+   * `include` controls which file types land in the archive (default: all three).
+   */
+  download(jobId: string, include?: ("html" | "markdown" | "data")[]): Promise<Blob> {
+    const qs = include && include.length > 0 ? `?include=${include.join(",")}` : "";
+    return this.http.getBlob(`/crawl/${jobId}/download${qs}`);
   }
 
   /**

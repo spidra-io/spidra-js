@@ -67,7 +67,7 @@ describe("crawl.run", () => {
   it("throws SpidraJobError when the crawl is cancelled", async () => {
     const fetchMock = sequenceFetch(
       jsonResponse(202, { status: "queued", jobId: "c1" }),
-      jsonResponse(200, { status: "running", progress: { message: "crawling", pagesCrawled: 1, maxPages: 5 } }),
+      jsonResponse(200, { status: "running", progress: { message: "crawling" } }),
       jsonResponse(200, { status: "cancelled" })
     );
     const client = makeClient(fetchMock);
@@ -112,5 +112,102 @@ describe("batch.run", () => {
     const res = await client.batch.run({ urls: ["https://a.com", "https://b.com"], prompt: "p" }, POLL);
     expect(res.status).toBe("completed");
     expect(res.failedCount).toBe(1);
+  });
+});
+
+describe("crawl endpoints added to catch the SDK up with the backend", () => {
+  it("jobDetails() fetches the flat details snapshot", async () => {
+    const fetchMock = sequenceFetch(
+      jsonResponse(200, { id: "c1", base_url: "https://x.com", status: "completed", pages_crawled: 5 })
+    );
+    const client = makeClient(fetchMock);
+    const details = await client.crawl.jobDetails("c1");
+    expect(details.pages_crawled).toBe(5);
+    expect(fetchMock.mock.calls[0][0]).toBe("https://api.test/crawl/job/c1");
+  });
+
+  it("retryPage() posts to the per-page retry endpoint", async () => {
+    const fetchMock = sequenceFetch(
+      jsonResponse(200, { success: true, data: { title: "Hi" }, tokensUsed: 50, creditsUsed: 1, message: "ok" })
+    );
+    const client = makeClient(fetchMock);
+    const res = await client.crawl.retryPage("c1", "p1");
+    expect(res.success).toBe(true);
+    expect(res.data).toEqual({ title: "Hi" });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://api.test/crawl/c1/retry/p1");
+    expect(init.method).toBe("POST");
+  });
+
+  it("download() returns a blob and includes the `include` query param", async () => {
+    const fetchMock = sequenceFetch(
+      new Response(new Blob(["zip bytes"]), { status: 200, headers: { "Content-Type": "application/zip" } })
+    );
+    const client = makeClient(fetchMock);
+    const blob = await client.crawl.download("c1", ["markdown", "data"]);
+    expect(blob).toBeInstanceOf(Blob);
+    expect(fetchMock.mock.calls[0][0]).toBe("https://api.test/crawl/c1/download?include=markdown,data");
+  });
+});
+
+describe("search.run", () => {
+  it("submits, polls to completion, and returns web results", async () => {
+    const fetchMock = sequenceFetch(
+      jsonResponse(202, { status: "queued", jobId: "s1" }),
+      jsonResponse(200, { status: "active", progress: { message: "Searching the web...", progress: 0 } }),
+      jsonResponse(200, {
+        status: "completed",
+        result: {
+          success: true,
+          data: { web: [{ title: "Hi", url: "https://x.com", position: 1 }] },
+          stats: { durationMs: 1200 },
+        },
+        error: null,
+      })
+    );
+    const client = makeClient(fetchMock);
+    const job = await client.search.run({ query: "hello world" }, POLL);
+    expect(job.status).toBe("completed");
+    expect(job.result.data.web).toHaveLength(1);
+    expect(job.result.data.web?.[0].title).toBe("Hi");
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("throws SpidraJobError with the jobId when the job fails", async () => {
+    const fetchMock = sequenceFetch(
+      jsonResponse(202, { status: "queued", jobId: "s9" }),
+      jsonResponse(200, { status: "failed", error: "all engines blocked" })
+    );
+    const client = makeClient(fetchMock);
+    const err = await catchError(client.search.run({ query: "hello world" }, POLL));
+    expect(err).toBeInstanceOf(SpidraJobError);
+    expect(err.jobId).toBe("s9");
+    expect(err.jobStatus).toBe("failed");
+    expect(err.message).toBe("all engines blocked");
+  });
+
+  it("passes includeDomains/excludeDomains and scrapeOptions through to the request body", async () => {
+    const fetchMock = sequenceFetch(
+      jsonResponse(202, { status: "queued", jobId: "s2" }),
+      jsonResponse(200, {
+        status: "completed",
+        result: { success: true, data: { web: [] }, stats: { durationMs: 500 } },
+        error: null,
+      })
+    );
+    const client = makeClient(fetchMock);
+    await client.search.run(
+      {
+        query: "espresso machine reviews",
+        includeDomains: ["reddit.com"],
+        scrapeOptions: { formats: ["markdown"], maxResults: 3 },
+      },
+      POLL
+    );
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const submittedBody = JSON.parse(init.body as string);
+    expect(submittedBody.includeDomains).toEqual(["reddit.com"]);
+    expect(submittedBody.scrapeOptions).toEqual({ formats: ["markdown"], maxResults: 3 });
   });
 });

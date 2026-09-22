@@ -1,6 +1,6 @@
 import type { SchemaInput } from "../lib/schema.js";
 
-export type OutputFormat = "json" | "markdown" | "text" | "table";
+export type OutputFormat = "json" | "markdown";
 export type ProxyCountry =
   | "us" | "gb" | "de" | "fr" | "jp" | "au" | "ca" | "br" | "in"
   | "nl" | "sg" | "es" | "it" | "mx" | "za" | "ng" | "ar" | "be"
@@ -55,16 +55,21 @@ export interface ScrapeUrl {
   url: string;
   /** Step-by-step browser actions to run before extraction */
   actions?: BrowserAction[];
+  /** AI Navigate mode — a single natural language instruction that handles all interactions automatically. */
+  instruction?: string;
 }
 
 export interface ScrapeParams<S extends SchemaInput = SchemaInput> {
   urls: ScrapeUrl[];
-  prompt: string;
+  /** Optional when `schema` is provided — a schema-only extraction needs no natural-language prompt. */
+  prompt?: string;
   output?: OutputFormat;
   /** JSON Schema object — or a Zod v4 schema, converted automatically. */
   schema?: S;
   useProxy?: boolean;
   proxyCountry?: ProxyCountry;
+  /** "fast" skips the browser for a plain HTTP fetch; "default" (the default) renders with a real browser. */
+  scrapeMode?: "fast" | "default";
   extractContentOnly?: boolean;
   screenshot?: boolean;
   fullPageScreenshot?: boolean;
@@ -78,6 +83,8 @@ export type JobStatus = "waiting" | "active" | "completed" | "failed";
 export interface ScrapeJobQueued {
   status: "queued";
   jobId: string;
+  /** Non-fatal issues with the provided `schema` (e.g. unsupported keywords), present only when there were any. */
+  schema_warnings?: string[];
 }
 
 export interface ScrapeUrlResult {
@@ -105,6 +112,7 @@ export interface ScrapeResult<T = unknown> {
 export interface ScrapeJobPending {
   status: "waiting" | "active";
   progress?: { message: string; progress: number };
+  schema_warnings?: string[];
 }
 
 export interface ScrapeJobCompleted<T = unknown> {
@@ -112,11 +120,13 @@ export interface ScrapeJobCompleted<T = unknown> {
   progress?: { message: string; progress: number };
   result: ScrapeResult<T>;
   error: null;
+  schema_warnings?: string[];
 }
 
 export interface ScrapeJobFailed {
   status: "failed";
   error: string;
+  schema_warnings?: string[];
 }
 
 export type ScrapeJobResponse<T = unknown> =

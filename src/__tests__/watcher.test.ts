@@ -28,8 +28,8 @@ describe("CrawlWatcher", () => {
   it("emits each page exactly once and done on completion", async () => {
     const source = crawlSource(
       [
-        { status: "running", progress: { message: "", pagesCrawled: 1, maxPages: 3 } },
-        { status: "running", progress: { message: "", pagesCrawled: 2, maxPages: 3 } },
+        { status: "running", progress: { message: "Scraping (1/3)" } },
+        { status: "running", progress: { message: "Scraping (2/3)" } },
         { status: "completed", result: [] },
       ],
       [[page("p1")], [page("p1"), page("p2")], [page("p1"), page("p2"), page("p3")]]
@@ -47,12 +47,12 @@ describe("CrawlWatcher", () => {
     expect(final?.status).toBe("completed");
   });
 
-  it("only re-fetches pages when the crawled-page count changes", async () => {
+  it("only re-fetches pages when the progress message changes", async () => {
     const source = crawlSource(
       [
-        { status: "running", progress: { message: "", pagesCrawled: 1, maxPages: 3 } },
-        { status: "running", progress: { message: "", pagesCrawled: 1, maxPages: 3 } },
-        { status: "running", progress: { message: "", pagesCrawled: 1, maxPages: 3 } },
+        { status: "running", progress: { message: "" } },
+        { status: "running", progress: { message: "" } },
+        { status: "running", progress: { message: "" } },
         { status: "completed", result: [] },
       ],
       [[page("p1")]]
@@ -68,7 +68,7 @@ describe("CrawlWatcher", () => {
   it("emits snapshot on every poll", async () => {
     const source = crawlSource(
       [
-        { status: "running", progress: { message: "", pagesCrawled: 1, maxPages: 2 } },
+        { status: "running", progress: { message: "" } },
         { status: "completed", result: [] },
       ],
       [[page("p1")]]
@@ -82,7 +82,7 @@ describe("CrawlWatcher", () => {
 
   it("stop() resolves wait() with null and emits no error", async () => {
     const source = crawlSource(
-      [{ status: "running", progress: { message: "", pagesCrawled: 1, maxPages: 9 } }],
+      [{ status: "running", progress: { message: "" } }],
       [[page("p1")]]
     );
     const watcher = new CrawlWatcher(source, "c1", { pollInterval: 1000 });
@@ -110,7 +110,7 @@ describe("CrawlWatcher", () => {
 
   it("emits SpidraTimeoutError when the watch timeout is exceeded", async () => {
     const source = crawlSource(
-      [{ status: "running", progress: { message: "", pagesCrawled: 1, maxPages: 9 } }],
+      [{ status: "running", progress: { message: "" } }],
       [[page("p1")]]
     );
     const watcher = new CrawlWatcher(source, "c1", { pollInterval: 5, timeout: 12 });

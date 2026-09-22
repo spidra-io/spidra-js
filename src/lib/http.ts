@@ -61,6 +61,21 @@ export class HttpClient {
     return this.request<T>("DELETE", path);
   }
 
+  /** Fetches a binary response (e.g. a zip download) instead of parsing JSON. */
+  async getBlob(path: string): Promise<Blob> {
+    const res = await this.fetch(`${this.baseUrl}${path}`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${this.apiKey}` },
+    });
+
+    if (!res.ok) {
+      const errorBody = (await res.json().catch(() => ({ message: res.statusText }))) as ApiErrorBody;
+      return this.throwError(res, errorBody);
+    }
+
+    return res.blob();
+  }
+
   private async request<T>(method: HttpMethod, path: string, body?: unknown): Promise<T> {
     let attempt = 0;
 

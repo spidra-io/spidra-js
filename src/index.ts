@@ -62,6 +62,8 @@ export type {
   CrawlHistoryResponse,
   CrawlStats,
   CrawlCancelResponse,
+  CrawlJobDetails,
+  CrawlRetryPageResponse,
 } from "./types/crawl.js";
 export type {
   ScrapeLogsParams,
@@ -71,3 +73,18 @@ export type {
 } from "./types/logs.js";
 export type { UsageRange, UsageStatRow } from "./types/usage.js";
 export type { PollOptions } from "./lib/poll.js";
+export type {
+  SearchSource,
+  SearchScrapeOptions,
+  SearchParams,
+  SearchResultItem,
+  SearchExtras,
+  SearchResponseData,
+  SearchStats,
+  SearchResult,
+  SearchJobQueued,
+  SearchJobPending,
+  SearchJobCompleted,
+  SearchJobFailed,
+  SearchJobResponse,
+} from "./types/search.js";

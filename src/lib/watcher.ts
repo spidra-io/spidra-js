@@ -93,7 +93,7 @@ export class CrawlWatcher<T = unknown> extends TypedEmitter<CrawlWatcherEvents<T
     const { pollInterval, timeout, maxConsecutiveErrors } = options;
     const signal = this.controller.signal;
     const deadline = timeout != null ? Date.now() + timeout : null;
-    let lastPagesCrawled: number | undefined;
+    let lastMessage: string | undefined;
     let firstPoll = true;
     let consecutiveErrors = 0;
 
@@ -108,11 +108,13 @@ export class CrawlWatcher<T = unknown> extends TypedEmitter<CrawlWatcherEvents<T
       try {
         snapshot = await this.source.get(this.jobId);
         terminal = TERMINAL_STATUSES.includes(snapshot.status);
-        const pagesCrawled =
-          "progress" in snapshot && snapshot.progress ? snapshot.progress.pagesCrawled : undefined;
-        if (firstPoll || terminal || pagesCrawled !== lastPagesCrawled) {
+        // The backend's numeric `progress` only ever takes 3 values (0 -> 0.5 -> 1) and
+        // isn't a per-page counter, but `message` changes with each page scraped
+        // (e.g. "Scraping (3/5) https://...") -- that's the real "did something change" signal.
+        const message = "progress" in snapshot && snapshot.progress ? snapshot.progress.message : undefined;
+        if (firstPoll || terminal || message !== lastMessage) {
           newPages = await this.collectNewPages();
-          lastPagesCrawled = pagesCrawled;
+          lastMessage = message;
           firstPoll = false;
         }
         consecutiveErrors = 0;

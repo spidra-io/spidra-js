@@ -3,12 +3,15 @@ import type { SchemaInput } from "../lib/schema.js";
 
 export interface BatchScrapeParams<S extends SchemaInput = SchemaInput> {
   urls: string[];
-  prompt: string;
+  /** Optional when `schema` is provided — a schema-only extraction needs no natural-language prompt. */
+  prompt?: string;
   output?: OutputFormat;
   /** JSON Schema object — or a Zod v4 schema, converted automatically. */
   schema?: S;
   useProxy?: boolean;
   proxyCountry?: ProxyCountry;
+  /** "fast" skips the browser for a plain HTTP fetch; "default" (the default) renders with a real browser. */
+  scrapeMode?: "fast" | "default";
   extractContentOnly?: boolean;
   screenshot?: boolean;
   fullPageScreenshot?: boolean;
@@ -19,6 +22,8 @@ export interface BatchScrapeQueued {
   status: "queued";
   batchId: string;
   total: number;
+  /** Non-fatal issues with the provided `schema` (e.g. unsupported keywords), present only when there were any. */
+  schema_warnings?: string[];
 }
 
 export type BatchItemStatus = "pending" | "running" | "completed" | "failed";
