@@ -16,6 +16,8 @@ Get your API key at [app.spidra.io](https://app.spidra.io) under **Settings** > 
 
 ## Quick start
 
+Create a client with your API key, then call whichever method fits what you need. Here's a scrape:
+
 ```typescript
 import { SpidraClient } from "spidra";
 
@@ -130,11 +132,15 @@ const result = await spidra.search({
 result.data.web?.[0].markdown; // the scraped page's content, right there on the result
 ```
 
-This makes the search take as long as its slowest scraped page, not the usual few seconds. Real scraping isn't instant, and Spidra would rather you wait once on one job than build your own polling loop around N separate scrape jobs. `maxResults` caps how many of the top-ranked web results get scraped; omit it to scrape all of them, up to a cap of 10. A result that fails to scrape or falls outside the time budget is simply left without `markdown`, not treated as an error.
+This makes the search take as long as its slowest scraped page, not the usual few seconds. Real scraping isn't instant, and Spidra would rather you wait once on one job than build your own polling loop around N separate scrape jobs.
+
+`maxResults` caps how many of the top-ranked web results get scraped; omit it to scrape all of them, up to a cap of 10. A result that fails to scrape or falls outside the time budget is simply left without `markdown`, not treated as an error.
 
 Need AI extraction, a schema, or a screenshot instead of plain markdown? Scrape that specific URL directly with [`spidra.scrape()`](#scraping).
 
 ### Manual job control
+
+If you'd rather not wait on the call, submit the search and check on it yourself whenever you're ready:
 
 ```typescript
 const { jobId } = await spidra.startSearch({ query: "electric cars" });
@@ -148,6 +154,8 @@ All scrape jobs run asynchronously. `scrape()` submits a job and polls until it 
 Up to 3 URLs can be passed per request and they are processed in parallel.
 
 ### Basic scrape
+
+Give it a URL and a prompt describing what to pull out, and it comes back as structured JSON:
 
 ```typescript
 const result = await spidra.scrape({
@@ -478,7 +486,7 @@ for (const item of batch.items) {
 
 Item statuses: `pending`, `running`, `completed`, `failed`.
 
-**Retry failed items:**
+If some URLs fail (a site was down, a page timed out), you don't have to resubmit the whole batch. Re-queue just the failed items:
 
 ```typescript
 const { batchId } = await spidra.startBatchScrape({
@@ -493,14 +501,14 @@ if (result.failedCount > 0) {
 }
 ```
 
-**Cancel a running batch:**
+Cancelling stops everything still pending and refunds the credits for it:
 
 ```typescript
 const { cancelledItems, creditsRefunded } = await spidra.cancelBatchScrape(batchId);
 console.log(`Cancelled ${cancelledItems} items, refunded ${creditsRefunded} credits`);
 ```
 
-**List past batches:**
+To look back through batches you've already run:
 
 ```typescript
 const { jobs, pagination } = await spidra.listBatchScrapes({ page: 1, limit: 20 });
@@ -550,7 +558,7 @@ for (const page of job.result) {
 | `proxyCountry` | `string` | Two-letter country code for geo-targeted proxy routing. |
 | `cookies` | `string` | Cookie string for authenticated crawls. |
 
-**Submit without waiting:**
+If you don't want to hold a connection open for a long crawl, submit it and check back whenever you like:
 
 ```typescript
 const { jobId } = await spidra.startCrawl({
@@ -563,7 +571,7 @@ const { jobId } = await spidra.startCrawl({
 const status = await spidra.getCrawl(jobId);
 ```
 
-**Limit depth and scope:**
+`maxDepth`, `includePaths`, and `excludePaths` keep a crawl from wandering off into pages you don't care about:
 
 ```typescript
 const job = await spidra.crawl({
@@ -576,9 +584,7 @@ const job = await spidra.crawl({
 });
 ```
 
-**Get signed download URLs for all crawled pages:**
-
-Each page includes `html` and `markdown` fields with S3-signed URLs that expire after 1 hour.
+Each crawled page includes `html` and `markdown` fields with S3-signed URLs that expire after 1 hour:
 
 ```typescript
 const { pages } = await spidra.crawlPages(jobId);
@@ -590,9 +596,7 @@ for (const page of pages) {
 }
 ```
 
-**Re-extract with a new instruction:**
-
-Runs a new AI transformation over an existing completed crawl without re-crawling any pages. Charges credits for the transformation only.
+Crawled a site and want different information out of it? You don't have to re-crawl. This runs a new AI transformation over the already-crawled content and only charges for the transformation:
 
 ```typescript
 const { jobId: newJobId } = await spidra.crawlExtract(
@@ -604,7 +608,7 @@ const { jobId: newJobId } = await spidra.crawlExtract(
 const result = await spidra.getCrawl(newJobId);
 ```
 
-**Crawl history and stats:**
+Look back through crawls you've already run, or check your total count for the account:
 
 ```typescript
 const { jobs, total, page, totalPages } = await spidra.crawlHistory({
@@ -615,9 +619,7 @@ const { jobs, total, page, totalPages } = await spidra.crawlHistory({
 const { total: totalCrawls } = await spidra.crawlStats();
 ```
 
-**Get full job details:**
-
-A flat snapshot of a crawl job's config and counters, the same data `crawlHistory()` returns per row, for one job.
+`crawlJobDetails()` gives you a flat snapshot of one crawl job's config and counters, the same data `crawlHistory()` returns per row:
 
 ```typescript
 const details = await spidra.crawlJobDetails(jobId);
@@ -626,16 +628,14 @@ console.log(details.status, details.pages_crawled, details.credits_used);
 
 > This endpoint returns raw database field names (`pages_crawled`, not `pagesCrawled`), unlike the rest of the SDK. Same as `crawlHistory()`'s entries.
 
-**Retry one page's AI transformation:**
-
-If a single page's extraction failed or you want to re-run it, retry just that page instead of the whole crawl. Charges credits for that page's transformation only.
+If a single page's extraction failed or you want to re-run it, retry just that page instead of the whole crawl. It only charges credits for that page's transformation:
 
 ```typescript
 const retry = await spidra.retryCrawlPage(jobId, pageId);
 console.log(retry.data);
 ```
 
-**Download crawl results as a zip:**
+To get the raw files instead of working through the API, download everything a crawl produced as one zip:
 
 ```typescript
 const blob = await spidra.downloadCrawlResults(jobId, ["markdown", "data"]);
@@ -705,7 +705,7 @@ for (const log of logs) {
 }
 ```
 
-**Get a single log with full extraction result:**
+Need the full detail on one job, not just the summary from the list? Fetch it by UUID:
 
 ```typescript
 const log = await spidra.getScrapeLog("log-uuid");
