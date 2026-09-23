@@ -1,6 +1,6 @@
 # Spidra Node SDK
 
-The official Node.js SDK for [Spidra](https://spidra.io) that allows you to scrape pages, run browser actions, batch-process URLs, and crawl entire sites. All results come back as structured data ready to feed into your LLM pipelines or store directly.
+The official Node.js SDK for [Spidra](https://spidra.io) that allows you to scrape pages, run browser actions, batch-process URLs, crawl entire sites, and search the web. All results come back as structured data ready to feed into your LLM pipelines or store directly.
 
 ## Installation
 
@@ -52,6 +52,7 @@ console.log(job.result.content);
     - [Poll options](#poll-options)
   - [Batch scraping](#batch-scraping)
   - [Crawling](#crawling)
+  - [Searching](#searching)
   - [Watching jobs (streaming results)](#watching-jobs-streaming-results)
   - [Logs](#logs)
   - [Usage statistics](#usage-statistics)
@@ -104,6 +105,8 @@ const job = await spidra.scrape.run({
   },
 });
 ```
+
+> If your schema uses a keyword the API doesn't support (e.g. `anyOf`, `$ref`), the response includes `schema_warnings` listing what was ignored — the rest of the schema still applies.
 
 ### Structured output with Zod
 
@@ -530,6 +533,108 @@ const { jobs, total, page, totalPages } = await spidra.crawl.history({
 });
 
 const { total: totalCrawls } = await spidra.crawl.stats();
+```
+
+**Get full job details:**
+
+A flat snapshot of a crawl job's config and counters — the same data `history()` returns per row, for one job.
+
+```typescript
+const details = await spidra.crawl.jobDetails(jobId);
+console.log(details.status, details.pages_crawled, details.credits_used);
+```
+
+> This endpoint returns raw database field names (`pages_crawled`, not `pagesCrawled`), unlike the rest of the SDK — same as `crawl.history()`'s entries.
+
+**Retry one page's AI transformation:**
+
+If a single page's extraction failed or you want to re-run it, retry just that page instead of the whole crawl. Charges credits for that page's transformation only.
+
+```typescript
+const retry = await spidra.crawl.retryPage(jobId, pageId);
+console.log(retry.data);
+```
+
+**Download crawl results as a zip:**
+
+```typescript
+const blob = await spidra.crawl.download(jobId, ["markdown", "data"]);
+// write `blob` to disk, or stream it straight to a response
+```
+
+`include` defaults to `["html", "markdown", "data"]` if you omit it.
+
+## Searching
+
+Search runs a real query and returns structured results — titles, links, descriptions, thumbnails — the same data you'd get scraping a search engine yourself, minus the scraping. Unlike scrape/batch/crawl, a plain search usually resolves in a few seconds.
+
+```typescript
+const job = await spidra.search.run({
+  query: "best espresso machine 2026",
+  sources: ["web", "news"],
+});
+
+for (const result of job.result.data.web ?? []) {
+  console.log(result.title, result.url);
+}
+```
+
+By default only `web` results come back. Request more with `sources`:
+
+| Source | Description |
+|--------|-------------|
+| `web` | Standard web results (default) |
+| `news` | News articles |
+| `images` | Image results |
+| `videos` | Video results |
+
+Each source is independent — if one comes back empty or is temporarily unavailable, the others are unaffected.
+
+**All search parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `query` | `string` | **Required.** What to search for. |
+| `sources` | `("web" \| "news" \| "images" \| "videos")[]` | Which result types to request. Defaults to `["web"]`. |
+| `limit` | `number` | Results per source, 1–20. Defaults to 10. |
+| `country` | `string` | Two-letter country code, or `"global"` / `"eu"` / `"asia"`, for localized results. |
+| `includeDomains` | `string[]` | Only return `web` results from these domains. Mutually exclusive with `excludeDomains`. |
+| `excludeDomains` | `string[]` | Keep `web` results from these domains out. Mutually exclusive with `includeDomains`. |
+| `scrapeOptions` | `{ formats, maxResults? }` | Opt-in — also scrape each web result's page content. See below. |
+
+### Domain filtering
+
+Restrict `web` results to specific domains, or keep specific domains out. Pass one or the other, never both.
+
+```typescript
+const job = await spidra.search.run({
+  query: "espresso machine reviews",
+  includeDomains: ["reddit.com"],
+});
+```
+
+### Scrape content from results
+
+Add `scrapeOptions` to also fetch each web result's actual page content in the same call — no second request, no separate job to poll.
+
+```typescript
+const job = await spidra.search.run({
+  query: "posthog before_send config",
+  scrapeOptions: { formats: ["markdown"], maxResults: 5 },
+});
+
+job.result.data.web?.[0].markdown; // the scraped page's content, right there on the result
+```
+
+This makes the search take as long as its slowest scraped page, not the usual few seconds — real scraping isn't instant, and Spidra would rather you wait once on one job than build your own polling loop around N separate scrape jobs. `maxResults` caps how many of the top-ranked web results get scraped; omit it to scrape all of them, up to a cap of 10. A result that fails to scrape or falls outside the time budget is simply left without `markdown`, not treated as an error.
+
+Need AI extraction, a schema, or a screenshot instead of plain markdown? Scrape that specific URL directly with [`spidra.scrape.run()`](#scraping).
+
+### Manual job control
+
+```typescript
+const { jobId } = await spidra.search.submit({ query: "electric cars" });
+const status = await spidra.search.get(jobId);
 ```
 
 ## Watching jobs (streaming results)
