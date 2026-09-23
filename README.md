@@ -159,7 +159,7 @@ Give it a URL and a prompt describing what to pull out, and it comes back as str
 
 ```typescript
 const result = await spidra.scrape({
-  urls: [{ url: "https://example.com/pricing" }],
+  urls: [{ url: "https://spidra.io/pricing" }],
   prompt: "Extract all pricing plans with name, price, and included features",
   output: "json",
 });
@@ -176,7 +176,7 @@ When you need a guaranteed shape, pass a `schema`. The API will enforce the stru
 
 ```typescript
 const result = await spidra.scrape({
-  urls: [{ url: "https://jobs.example.com/senior-engineer" }],
+  urls: [{ url: "https://github.careers" }],
   prompt: "Extract the job listing details",
   output: "json",
   schema: {
@@ -211,7 +211,7 @@ const JobListing = z.object({
 });
 
 const result = await spidra.scrape({
-  urls:   [{ url: "https://jobs.example.com/senior-engineer" }],
+  urls:   [{ url: "https://github.careers" }],
   prompt: "Extract the job listing details",
   output: "json",
   schema: JobListing,
@@ -243,7 +243,7 @@ Pass cookies as a string to scrape pages that require a login session.
 
 ```typescript
 const result = await spidra.scrape({
-  urls: [{ url: "https://app.example.com/dashboard" }],
+  urls: [{ url: "https://app.spidra.io/dashboard" }],
   prompt: "Extract the monthly revenue and active user count",
   cookies: "session=abc123; auth_token=xyz789",
 });
@@ -257,7 +257,7 @@ Actions let you interact with the page before the scrape runs. They execute in o
 const result = await spidra.scrape({
   urls: [
     {
-      url: "https://example.com/products",
+      url: "https://spidra.io/products",
       actions: [
         { type: "click", selector: "#accept-cookies" },
         { type: "wait",  duration: 1000 },
@@ -426,7 +426,7 @@ Use `startScrape()` and `getScrape()` when you want to manage polling yourself, 
 ```typescript
 // Submit a job and get the jobId immediately
 const { jobId } = await spidra.startScrape({
-  urls: [{ url: "https://example.com" }],
+  urls: [{ url: "https://spidra.io" }],
   prompt: "Extract the main headline",
 });
 
@@ -466,9 +466,9 @@ Submit up to 50 URLs in a single request. All URLs are processed in parallel. Ea
 ```typescript
 const batch = await spidra.batchScrape({
   urls: [
-    "https://shop.example.com/product/1",
-    "https://shop.example.com/product/2",
-    "https://shop.example.com/product/3",
+    "https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html",
+    "https://books.toscrape.com/catalogue/tipping-the-velvet_999/index.html",
+    "https://books.toscrape.com/catalogue/soumission_998/index.html",
   ],
   prompt:   "Extract product name, price, and availability",
   output:   "json",
@@ -490,7 +490,7 @@ If some URLs fail (a site was down, a page timed out), you don't have to resubmi
 
 ```typescript
 const { batchId } = await spidra.startBatchScrape({
-  urls: ["https://example.com/1", "https://example.com/2"],
+  urls: ["https://spidra.io/blog", "https://spidra.io/pricing"],
   prompt: "Extract the page title",
 });
 
@@ -524,7 +524,7 @@ Given a starting URL, Spidra discovers pages automatically according to your ins
 
 ```typescript
 const job = await spidra.crawl({
-  baseUrl:              "https://competitor.com/blog",
+  baseUrl:              "https://posthog.com/blog",
   crawlInstruction:     "Find all blog posts published in 2024",
   transformInstruction: "Extract the title, author, publish date, and a one-sentence summary",
   maxPages:             30,
@@ -562,7 +562,7 @@ If you don't want to hold a connection open for a long crawl, submit it and chec
 
 ```typescript
 const { jobId } = await spidra.startCrawl({
-  baseUrl:          "https://example.com/docs",
+  baseUrl:          "https://docs.spidra.io",
   crawlInstruction: "Find all documentation pages",
   maxPages:         50,
 });
@@ -575,7 +575,7 @@ const status = await spidra.getCrawl(jobId);
 
 ```typescript
 const job = await spidra.crawl({
-  baseUrl:            "https://example.com/blog",
+  baseUrl:            "https://spidra.io/blog",
   crawlInstruction:   "Find all blog posts",
   maxDepth:           2,
   includePaths:       ["/blog/"],
@@ -650,7 +650,7 @@ For long-running crawls and batches, `watchCrawl()`/`watchBatch()` give you each
 
 ```typescript
 const { jobId } = await spidra.startCrawl({
-  baseUrl:              "https://competitor.com/blog",
+  baseUrl:              "https://posthog.com/blog",
   crawlInstruction:     "Find all blog posts",
   transformInstruction: "Extract title, author, and publish date",
   maxPages:             50,
@@ -763,7 +763,7 @@ import {
 } from "spidra";
 
 try {
-  await spidra.scrape({ urls: [{ url: "https://example.com" }], prompt: "..." });
+  await spidra.scrape({ urls: [{ url: "https://spidra.io" }], prompt: "..." });
 } catch (err) {
   if (err instanceof SpidraAuthenticationError) {
     // 401: Missing or invalid Authorization header
