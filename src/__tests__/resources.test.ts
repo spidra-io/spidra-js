@@ -15,8 +15,8 @@ function makeClient(fetchImpl: typeof fetch) {
   });
 }
 
-describe("scrape.run", () => {
-  it("submits, polls to completion, and returns the result", async () => {
+describe("scrape", () => {
+  it("submits, polls to completion, and returns the unwrapped result", async () => {
     const fetchMock = sequenceFetch(
       jsonResponse(202, { status: "queued", jobId: "j1" }),
       jsonResponse(200, { status: "active", progress: { message: "scraping", progress: 50 } }),
@@ -27,9 +27,8 @@ describe("scrape.run", () => {
       })
     );
     const client = makeClient(fetchMock);
-    const job = await client.scrape.run({ urls: [{ url: "https://x.com" }], prompt: "extract title" }, POLL);
-    expect(job.status).toBe("completed");
-    expect(job.result.content).toEqual({ title: "Hi" });
+    const result = await client.scrape({ urls: [{ url: "https://x.com" }], prompt: "extract title" }, POLL);
+    expect(result.content).toEqual({ title: "Hi" });
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
@@ -39,7 +38,7 @@ describe("scrape.run", () => {
       jsonResponse(200, { status: "failed", error: "target blocked us" })
     );
     const client = makeClient(fetchMock);
-    const err = await catchError(client.scrape.run({ urls: [{ url: "https://x.com" }], prompt: "p" }, POLL));
+    const err = await catchError(client.scrape({ urls: [{ url: "https://x.com" }], prompt: "p" }, POLL));
     expect(err).toBeInstanceOf(SpidraJobError);
     expect(err.jobId).toBe("j9");
     expect(err.jobStatus).toBe("failed");
@@ -53,7 +52,7 @@ describe("scrape.run", () => {
     );
     const client = makeClient(fetchMock);
     const Product = z.object({ name: z.string() });
-    await client.scrape.run({ urls: [{ url: "https://x.com" }], prompt: "p", schema: Product }, POLL);
+    await client.scrape({ urls: [{ url: "https://x.com" }], prompt: "p", schema: Product }, POLL);
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     const submittedBody = JSON.parse(init.body as string);
@@ -61,9 +60,21 @@ describe("scrape.run", () => {
     expect(submittedBody.schema.properties.name.type).toBe("string");
     expect(submittedBody.schema._zod).toBeUndefined();
   });
+
+  it("startScrape/getScrape give manual control", async () => {
+    const fetchMock = sequenceFetch(
+      jsonResponse(202, { status: "queued", jobId: "j-manual" }),
+      jsonResponse(200, { status: "active", progress: { message: "scraping", progress: 10 } })
+    );
+    const client = makeClient(fetchMock);
+    const queued = await client.startScrape({ urls: [{ url: "https://x.com" }], prompt: "p" });
+    expect(queued.jobId).toBe("j-manual");
+    const status = await client.getScrape(queued.jobId);
+    expect(status.status).toBe("active");
+  });
 });
 
-describe("crawl.run", () => {
+describe("crawl", () => {
   it("throws SpidraJobError when the crawl is cancelled", async () => {
     const fetchMock = sequenceFetch(
       jsonResponse(202, { status: "queued", jobId: "c1" }),
@@ -72,7 +83,7 @@ describe("crawl.run", () => {
     );
     const client = makeClient(fetchMock);
     const err = await catchError(
-      client.crawl.run({ baseUrl: "https://x.com", crawlInstruction: "all pages" }, POLL)
+      client.crawl({ baseUrl: "https://x.com", crawlInstruction: "all pages" }, POLL)
     );
     expect(err).toBeInstanceOf(SpidraJobError);
     expect(err.jobId).toBe("c1");
@@ -85,13 +96,46 @@ describe("crawl.run", () => {
       jsonResponse(200, { status: "completed", result: [{ url: "https://x.com/a", data: { t: 1 } }] })
     );
     const client = makeClient(fetchMock);
-    const job = await client.crawl.run({ baseUrl: "https://x.com", crawlInstruction: "all" }, POLL);
+    const job = await client.crawl({ baseUrl: "https://x.com", crawlInstruction: "all" }, POLL);
     expect(job.result).toHaveLength(1);
     expect(job.result[0].url).toBe("https://x.com/a");
   });
+
+  it("jobDetails() fetches the flat details snapshot", async () => {
+    const fetchMock = sequenceFetch(
+      jsonResponse(200, { id: "c1", base_url: "https://x.com", status: "completed", pages_crawled: 5 })
+    );
+    const client = makeClient(fetchMock);
+    const details = await client.crawlJobDetails("c1");
+    expect(details.pages_crawled).toBe(5);
+    expect(fetchMock.mock.calls[0][0]).toBe("https://api.test/crawl/job/c1");
+  });
+
+  it("retryCrawlPage() posts to the per-page retry endpoint", async () => {
+    const fetchMock = sequenceFetch(
+      jsonResponse(200, { success: true, data: { title: "Hi" }, tokensUsed: 50, creditsUsed: 1, message: "ok" })
+    );
+    const client = makeClient(fetchMock);
+    const res = await client.retryCrawlPage("c1", "p1");
+    expect(res.success).toBe(true);
+    expect(res.data).toEqual({ title: "Hi" });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://api.test/crawl/c1/retry/p1");
+    expect(init.method).toBe("POST");
+  });
+
+  it("downloadCrawlResults() returns a blob and includes the `include` query param", async () => {
+    const fetchMock = sequenceFetch(
+      new Response(new Blob(["zip bytes"]), { status: 200, headers: { "Content-Type": "application/zip" } })
+    );
+    const client = makeClient(fetchMock);
+    const blob = await client.downloadCrawlResults("c1", ["markdown", "data"]);
+    expect(blob).toBeInstanceOf(Blob);
+    expect(fetchMock.mock.calls[0][0]).toBe("https://api.test/crawl/c1/download?include=markdown,data");
+  });
 });
 
-describe("batch.run", () => {
+describe("batchScrape", () => {
   it("returns the final response even when some items failed", async () => {
     const fetchMock = sequenceFetch(
       jsonResponse(202, { status: "queued", batchId: "b1", total: 2 }),
@@ -109,49 +153,14 @@ describe("batch.run", () => {
       })
     );
     const client = makeClient(fetchMock);
-    const res = await client.batch.run({ urls: ["https://a.com", "https://b.com"], prompt: "p" }, POLL);
+    const res = await client.batchScrape({ urls: ["https://a.com", "https://b.com"], prompt: "p" }, POLL);
     expect(res.status).toBe("completed");
     expect(res.failedCount).toBe(1);
   });
 });
 
-describe("crawl endpoints added to catch the SDK up with the backend", () => {
-  it("jobDetails() fetches the flat details snapshot", async () => {
-    const fetchMock = sequenceFetch(
-      jsonResponse(200, { id: "c1", base_url: "https://x.com", status: "completed", pages_crawled: 5 })
-    );
-    const client = makeClient(fetchMock);
-    const details = await client.crawl.jobDetails("c1");
-    expect(details.pages_crawled).toBe(5);
-    expect(fetchMock.mock.calls[0][0]).toBe("https://api.test/crawl/job/c1");
-  });
-
-  it("retryPage() posts to the per-page retry endpoint", async () => {
-    const fetchMock = sequenceFetch(
-      jsonResponse(200, { success: true, data: { title: "Hi" }, tokensUsed: 50, creditsUsed: 1, message: "ok" })
-    );
-    const client = makeClient(fetchMock);
-    const res = await client.crawl.retryPage("c1", "p1");
-    expect(res.success).toBe(true);
-    expect(res.data).toEqual({ title: "Hi" });
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("https://api.test/crawl/c1/retry/p1");
-    expect(init.method).toBe("POST");
-  });
-
-  it("download() returns a blob and includes the `include` query param", async () => {
-    const fetchMock = sequenceFetch(
-      new Response(new Blob(["zip bytes"]), { status: 200, headers: { "Content-Type": "application/zip" } })
-    );
-    const client = makeClient(fetchMock);
-    const blob = await client.crawl.download("c1", ["markdown", "data"]);
-    expect(blob).toBeInstanceOf(Blob);
-    expect(fetchMock.mock.calls[0][0]).toBe("https://api.test/crawl/c1/download?include=markdown,data");
-  });
-});
-
-describe("search.run", () => {
-  it("submits, polls to completion, and returns web results", async () => {
+describe("search", () => {
+  it("submits, polls to completion, and returns the unwrapped result", async () => {
     const fetchMock = sequenceFetch(
       jsonResponse(202, { status: "queued", jobId: "s1" }),
       jsonResponse(200, { status: "active", progress: { message: "Searching the web...", progress: 0 } }),
@@ -166,10 +175,9 @@ describe("search.run", () => {
       })
     );
     const client = makeClient(fetchMock);
-    const job = await client.search.run({ query: "hello world" }, POLL);
-    expect(job.status).toBe("completed");
-    expect(job.result.data.web).toHaveLength(1);
-    expect(job.result.data.web?.[0].title).toBe("Hi");
+    const result = await client.search({ query: "hello world" }, POLL);
+    expect(result.data.web).toHaveLength(1);
+    expect(result.data.web?.[0].title).toBe("Hi");
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
@@ -179,7 +187,7 @@ describe("search.run", () => {
       jsonResponse(200, { status: "failed", error: "all engines blocked" })
     );
     const client = makeClient(fetchMock);
-    const err = await catchError(client.search.run({ query: "hello world" }, POLL));
+    const err = await catchError(client.search({ query: "hello world" }, POLL));
     expect(err).toBeInstanceOf(SpidraJobError);
     expect(err.jobId).toBe("s9");
     expect(err.jobStatus).toBe("failed");
@@ -196,7 +204,7 @@ describe("search.run", () => {
       })
     );
     const client = makeClient(fetchMock);
-    await client.search.run(
+    await client.search(
       {
         query: "espresso machine reviews",
         includeDomains: ["reddit.com"],

@@ -19,13 +19,13 @@ import { SpidraClient } from "spidra";
 
 const spidra = new SpidraClient({ apiKey: "spd_YOUR_API_KEY" });
 
-const job = await spidra.scrape.run({
+const result = await spidra.scrape({
   urls: [{ url: "https://news.ycombinator.com" }],
   prompt: "List the top 5 stories with title, points, and comment count",
   output: "json",
 });
 
-console.log(job.result.content);
+console.log(result.content);
 ```
 
 ## Table of contents
@@ -66,13 +66,13 @@ console.log(job.result.content);
 Search runs a real query and returns structured results — titles, links, descriptions, thumbnails — the same data you'd get scraping a search engine yourself, minus the scraping. Unlike scrape/batch/crawl, a plain search usually resolves in a few seconds.
 
 ```typescript
-const job = await spidra.search.run({
+const result = await spidra.search({
   query: "best espresso machine 2026",
   sources: ["web", "news"],
 });
 
-for (const result of job.result.data.web ?? []) {
-  console.log(result.title, result.url);
+for (const hit of result.data.web ?? []) {
+  console.log(hit.title, hit.url);
 }
 ```
 
@@ -104,7 +104,7 @@ Each source is independent — if one comes back empty or is temporarily unavail
 Restrict `web` results to specific domains, or keep specific domains out. Pass one or the other, never both.
 
 ```typescript
-const job = await spidra.search.run({
+const result = await spidra.search({
   query: "espresso machine reviews",
   includeDomains: ["reddit.com"],
 });
@@ -115,41 +115,41 @@ const job = await spidra.search.run({
 Add `scrapeOptions` to also fetch each web result's actual page content in the same call — no second request, no separate job to poll.
 
 ```typescript
-const job = await spidra.search.run({
+const result = await spidra.search({
   query: "posthog before_send config",
   scrapeOptions: { formats: ["markdown"], maxResults: 5 },
 });
 
-job.result.data.web?.[0].markdown; // the scraped page's content, right there on the result
+result.data.web?.[0].markdown; // the scraped page's content, right there on the result
 ```
 
 This makes the search take as long as its slowest scraped page, not the usual few seconds — real scraping isn't instant, and Spidra would rather you wait once on one job than build your own polling loop around N separate scrape jobs. `maxResults` caps how many of the top-ranked web results get scraped; omit it to scrape all of them, up to a cap of 10. A result that fails to scrape or falls outside the time budget is simply left without `markdown`, not treated as an error.
 
-Need AI extraction, a schema, or a screenshot instead of plain markdown? Scrape that specific URL directly with [`spidra.scrape.run()`](#scraping).
+Need AI extraction, a schema, or a screenshot instead of plain markdown? Scrape that specific URL directly with [`spidra.scrape()`](#scraping).
 
 ### Manual job control
 
 ```typescript
-const { jobId } = await spidra.search.submit({ query: "electric cars" });
-const status = await spidra.search.get(jobId);
+const { jobId } = await spidra.startSearch({ query: "electric cars" });
+const status = await spidra.getSearch(jobId);
 ```
 
 ## Scraping
 
-All scrape jobs run asynchronously. The `run()` method submits a job and polls until it finishes. If you need more control, use `submit()` and `get()` directly.
+All scrape jobs run asynchronously. `scrape()` submits a job and polls until it finishes. If you need more control, use `startScrape()` and `getScrape()` directly.
 
 Up to 3 URLs can be passed per request and they are processed in parallel.
 
 ### Basic scrape
 
 ```typescript
-const job = await spidra.scrape.run({
+const result = await spidra.scrape({
   urls: [{ url: "https://example.com/pricing" }],
   prompt: "Extract all pricing plans with name, price, and included features",
   output: "json",
 });
 
-console.log(job.result.content);
+console.log(result.content);
 // { plans: [{ name: "Starter", price: "$9/mo", features: [...] }, ...] }
 ```
 
@@ -160,7 +160,7 @@ When you need a guaranteed shape, pass a `schema`. The API will enforce the stru
 > Define every field you want extracted — an untyped `object` with no `properties` gives the AI nothing to fill in, so those members come back empty.
 
 ```typescript
-const job = await spidra.scrape.run({
+const result = await spidra.scrape({
   urls: [{ url: "https://jobs.example.com/senior-engineer" }],
   prompt: "Extract the job listing details",
   output: "json",
@@ -195,24 +195,24 @@ const JobListing = z.object({
   skills:  z.array(z.string()),
 });
 
-const job = await spidra.scrape.run({
+const result = await spidra.scrape({
   urls:   [{ url: "https://jobs.example.com/senior-engineer" }],
   prompt: "Extract the job listing details",
   output: "json",
   schema: JobListing,
 });
 
-job.result.content.title; // typed as string — no casting needed
+result.content.title; // typed as string — no casting needed
 ```
 
-The same works for `batch.run()` (types each item's `result`) and `crawl.run()` (types each page's `data`). Zod is an optional peer dependency — install it only if you use this (`npm install zod`). Passing `MySchema.shape` by mistake throws a helpful error.
+The same works for `batchScrape()` (types each item's `result`) and `crawl()` (types each page's `data`). Zod is an optional peer dependency — install it only if you use this (`npm install zod`). Passing `MySchema.shape` by mistake throws a helpful error.
 
 ### Geo-targeted scraping
 
 Pass `useProxy: true` and a `proxyCountry` code to route the request through a specific country. Useful for geo-restricted content or localized pricing.
 
 ```typescript
-const job = await spidra.scrape.run({
+const result = await spidra.scrape({
   urls: [{ url: "https://www.amazon.de/gp/bestsellers" }],
   prompt: "List the top 10 products with name and price",
   useProxy: true,
@@ -227,7 +227,7 @@ Supported country codes include: `us`, `gb`, `de`, `fr`, `jp`, `au`, `ca`, `br`,
 Pass cookies as a string to scrape pages that require a login session.
 
 ```typescript
-const job = await spidra.scrape.run({
+const result = await spidra.scrape({
   urls: [{ url: "https://app.example.com/dashboard" }],
   prompt: "Extract the monthly revenue and active user count",
   cookies: "session=abc123; auth_token=xyz789",
@@ -239,7 +239,7 @@ const job = await spidra.scrape.run({
 Actions let you interact with the page before the scrape runs. They execute in order, and the scrape happens after all actions complete.
 
 ```typescript
-const job = await spidra.scrape.run({
+const result = await spidra.scrape({
   urls: [
     {
       url: "https://example.com/products",
@@ -301,7 +301,7 @@ For `selector`, use a CSS selector or XPath. For `value`, use a plain English de
 Read each element's content directly without navigating. Best for product cards, search results, table rows.
 
 ```typescript
-const job = await spidra.scrape.run({
+const result = await spidra.scrape({
   urls: [
     {
       url: "https://books.toscrape.com/catalogue/category/books/mystery_3/index.html",
@@ -406,17 +406,17 @@ Use `itemPrompt` to extract fields from each item individually. Use the top-leve
 
 ### Manual job control
 
-Use `submit()` and `get()` when you want to manage polling yourself, or when you want to fire-and-forget and check back later.
+Use `startScrape()` and `getScrape()` when you want to manage polling yourself, or when you want to fire-and-forget and check back later.
 
 ```typescript
 // Submit a job and get the jobId immediately
-const { jobId } = await spidra.scrape.submit({
+const { jobId } = await spidra.startScrape({
   urls: [{ url: "https://example.com" }],
   prompt: "Extract the main headline",
 });
 
 // Check status at any point
-const status = await spidra.scrape.get(jobId);
+const status = await spidra.getScrape(jobId);
 
 if (status.status === "completed") {
   console.log(status.result.content);
@@ -429,12 +429,12 @@ Job statuses: `queued`, `waiting`, `active`, `completed`, `failed`.
 
 ### Poll options
 
-`scrape.run()`, `batch.run()`, and `crawl.run()` accept an optional second argument to control polling behavior.
+`scrape()`, `batchScrape()`, and `crawl()` accept an optional second argument to control polling behavior.
 
 ```typescript
 const controller = new AbortController();
 
-const job = await spidra.scrape.run(params, {
+const result = await spidra.scrape(params, {
   pollInterval: 3000,        // ms between status checks (default: 3000)
   timeout:      600_000,     // max wait in ms before SpidraTimeoutError (default: null — wait until the job finishes)
   signal:       controller.signal, // stop waiting (the job itself keeps running)
@@ -442,14 +442,14 @@ const job = await spidra.scrape.run(params, {
 });
 ```
 
-By default there is no timeout — `run()` waits until the job reaches a terminal state, so long crawls just work. If you set a `timeout` and it fires, the SDK throws `SpidraTimeoutError`; the job keeps running server-side, so you can keep checking it with `.get()` or cancel it. Transient errors during polling (a 502 blip, a dropped connection) don't kill the wait — polling continues unless several happen in a row.
+By default there is no timeout — these calls wait until the job reaches a terminal state, so long crawls just work. If you set a `timeout` and it fires, the SDK throws `SpidraTimeoutError`; the job keeps running server-side, so you can keep checking it with the matching `get*` method (`getScrape()`, `getBatchScrape()`, `getCrawl()`) or cancel it. Transient errors during polling (a 502 blip, a dropped connection) don't kill the wait — polling continues unless several happen in a row.
 
 ## Batch scraping
 
 Submit up to 50 URLs in a single request. All URLs are processed in parallel. Each URL is a plain string, not an object.
 
 ```typescript
-const batch = await spidra.batch.run({
+const batch = await spidra.batchScrape({
   urls: [
     "https://shop.example.com/product/1",
     "https://shop.example.com/product/2",
@@ -474,29 +474,29 @@ Item statuses: `pending`, `running`, `completed`, `failed`.
 **Retry failed items:**
 
 ```typescript
-const { batchId } = await spidra.batch.submit({
+const { batchId } = await spidra.startBatchScrape({
   urls: ["https://example.com/1", "https://example.com/2"],
   prompt: "Extract the page title",
 });
 
 // Later, after checking status
-const result = await spidra.batch.get(batchId);
+const result = await spidra.getBatchScrape(batchId);
 if (result.failedCount > 0) {
-  await spidra.batch.retry(batchId);
+  await spidra.retryBatchScrape(batchId);
 }
 ```
 
 **Cancel a running batch:**
 
 ```typescript
-const { cancelledItems, creditsRefunded } = await spidra.batch.cancel(batchId);
+const { cancelledItems, creditsRefunded } = await spidra.cancelBatchScrape(batchId);
 console.log(`Cancelled ${cancelledItems} items, refunded ${creditsRefunded} credits`);
 ```
 
 **List past batches:**
 
 ```typescript
-const { jobs, pagination } = await spidra.batch.list({ page: 1, limit: 20 });
+const { jobs, pagination } = await spidra.listBatchScrapes({ page: 1, limit: 20 });
 
 for (const job of jobs) {
   console.log(job.uuid, job.status, `${job.completedCount}/${job.totalUrls}`);
@@ -508,7 +508,7 @@ for (const job of jobs) {
 Given a starting URL, Spidra discovers pages automatically according to your instruction and extracts structured data from each one.
 
 ```typescript
-const job = await spidra.crawl.run({
+const job = await spidra.crawl({
   baseUrl:              "https://competitor.com/blog",
   crawlInstruction:     "Find all blog posts published in 2024",
   transformInstruction: "Extract the title, author, publish date, and a one-sentence summary",
@@ -546,20 +546,20 @@ for (const page of job.result) {
 **Submit without waiting:**
 
 ```typescript
-const { jobId } = await spidra.crawl.submit({
+const { jobId } = await spidra.startCrawl({
   baseUrl:          "https://example.com/docs",
   crawlInstruction: "Find all documentation pages",
   maxPages:         50,
 });
 
 // Check status later
-const status = await spidra.crawl.get(jobId);
+const status = await spidra.getCrawl(jobId);
 ```
 
 **Limit depth and scope:**
 
 ```typescript
-const job = await spidra.crawl.run({
+const job = await spidra.crawl({
   baseUrl:            "https://example.com/blog",
   crawlInstruction:   "Find all blog posts",
   maxDepth:           2,
@@ -574,7 +574,7 @@ const job = await spidra.crawl.run({
 Each page includes `html` and `markdown` fields with S3-signed URLs that expire after 1 hour.
 
 ```typescript
-const { pages } = await spidra.crawl.pages(jobId);
+const { pages } = await spidra.crawlPages(jobId);
 
 for (const page of pages) {
   console.log(page.url, page.status);
@@ -588,50 +588,50 @@ for (const page of pages) {
 Runs a new AI transformation over an existing completed crawl without re-crawling any pages. Charges credits for the transformation only.
 
 ```typescript
-const { jobId: newJobId } = await spidra.crawl.extract(
+const { jobId: newJobId } = await spidra.crawlExtract(
   sourceJobId,
   "Extract only the product SKUs and prices as a CSV"
 );
 
 // Poll the new job manually
-const result = await spidra.crawl.get(newJobId);
+const result = await spidra.getCrawl(newJobId);
 ```
 
 **Crawl history and stats:**
 
 ```typescript
-const { jobs, total, page, totalPages } = await spidra.crawl.history({
+const { jobs, total, page, totalPages } = await spidra.crawlHistory({
   page:  1,
   limit: 10,
 });
 
-const { total: totalCrawls } = await spidra.crawl.stats();
+const { total: totalCrawls } = await spidra.crawlStats();
 ```
 
 **Get full job details:**
 
-A flat snapshot of a crawl job's config and counters — the same data `history()` returns per row, for one job.
+A flat snapshot of a crawl job's config and counters — the same data `crawlHistory()` returns per row, for one job.
 
 ```typescript
-const details = await spidra.crawl.jobDetails(jobId);
+const details = await spidra.crawlJobDetails(jobId);
 console.log(details.status, details.pages_crawled, details.credits_used);
 ```
 
-> This endpoint returns raw database field names (`pages_crawled`, not `pagesCrawled`), unlike the rest of the SDK — same as `crawl.history()`'s entries.
+> This endpoint returns raw database field names (`pages_crawled`, not `pagesCrawled`), unlike the rest of the SDK — same as `crawlHistory()`'s entries.
 
 **Retry one page's AI transformation:**
 
 If a single page's extraction failed or you want to re-run it, retry just that page instead of the whole crawl. Charges credits for that page's transformation only.
 
 ```typescript
-const retry = await spidra.crawl.retryPage(jobId, pageId);
+const retry = await spidra.retryCrawlPage(jobId, pageId);
 console.log(retry.data);
 ```
 
 **Download crawl results as a zip:**
 
 ```typescript
-const blob = await spidra.crawl.download(jobId, ["markdown", "data"]);
+const blob = await spidra.downloadCrawlResults(jobId, ["markdown", "data"]);
 // write `blob` to disk, or stream it straight to a response
 ```
 
@@ -639,17 +639,17 @@ const blob = await spidra.crawl.download(jobId, ["markdown", "data"]);
 
 ## Watching jobs (streaming results)
 
-For long-running crawls and batches, `watch()` gives you each result as it lands instead of one snapshot at the end. It polls under the hood but only re-fetches page content when progress actually changes.
+For long-running crawls and batches, `watchCrawl()`/`watchBatch()` give you each result as it lands instead of one snapshot at the end. They poll under the hood but only re-fetch page content when progress actually changes.
 
 ```typescript
-const { jobId } = await spidra.crawl.submit({
+const { jobId } = await spidra.startCrawl({
   baseUrl:              "https://competitor.com/blog",
   crawlInstruction:     "Find all blog posts",
   transformInstruction: "Extract title, author, and publish date",
   maxPages:             50,
 });
 
-const watcher = spidra.crawl.watch(jobId);
+const watcher = spidra.watchCrawl(jobId);
 
 watcher.on("page", (page) => {
   // fires once per crawled page, as soon as it is available
@@ -657,7 +657,7 @@ watcher.on("page", (page) => {
 });
 watcher.on("snapshot", (status) => {
   if ("progress" in status && status.progress) {
-    console.log(`${status.progress.pagesCrawled}/${status.progress.maxPages} pages`);
+    console.log(status.progress.message); // e.g. "Scraping (3/50) https://..."
   }
 });
 watcher.on("error", (err) => console.error(err));
@@ -668,14 +668,14 @@ const final = await watcher.wait(); // terminal response, or null if you called 
 Batch works the same way, with an `item` event per finished URL:
 
 ```typescript
-const { batchId } = await spidra.batch.submit({ urls, prompt: "Extract product data" });
+const { batchId } = await spidra.startBatchScrape({ urls, prompt: "Extract product data" });
 
-const watcher = spidra.batch.watch(batchId);
+const watcher = spidra.watchBatch(batchId);
 watcher.on("item", (item) => console.log(item.url, item.status, item.result));
 await watcher.wait();
 ```
 
-Events: `snapshot` (every poll), `page`/`item` (each result exactly once — including ones that already existed when you started watching), `done` (job reached a terminal state), `error` (non-recoverable error or timeout). `watch()` accepts the same options as polling (`pollInterval`, `timeout`, `signal`) and `watcher.stop()` stops watching without cancelling the job.
+Events: `snapshot` (every poll), `page`/`item` (each result exactly once — including ones that already existed when you started watching), `done` (job reached a terminal state), `error` (non-recoverable error or timeout). `watchCrawl()`/`watchBatch()` accept the same options as polling (`pollInterval`, `timeout`, `signal`) and `watcher.stop()` stops watching without cancelling the job.
 
 ## Logs
 
@@ -683,7 +683,7 @@ Scrape logs are stored for every job that runs through the API.
 
 ```typescript
 // List logs with optional filters
-const { logs, total } = await spidra.logs.list({
+const { logs, total } = await spidra.scrapeLogs({
   status:     "failed",        // "success" | "failed"
   searchTerm: "amazon.com",
   channel:    "api",           // "api" | "playground"
@@ -701,7 +701,7 @@ for (const log of logs) {
 **Get a single log with full extraction result:**
 
 ```typescript
-const log = await spidra.logs.get("log-uuid");
+const log = await spidra.getScrapeLog("log-uuid");
 console.log(log.result_data); // the full AI output for that job
 ```
 
@@ -711,7 +711,7 @@ Returns credit and request usage broken down by day or week.
 
 ```typescript
 // Range options: "7d" | "30d" | "weekly"
-const rows = await spidra.usage.get("30d");
+const rows = await spidra.usage("30d");
 
 for (const row of rows) {
   console.log(row.date, row.requests, row.credits, row.tokens);
@@ -756,7 +756,7 @@ import {
 } from "spidra";
 
 try {
-  await spidra.scrape.run({ urls: [{ url: "https://example.com" }], prompt: "..." });
+  await spidra.scrape({ urls: [{ url: "https://example.com" }], prompt: "..." });
 } catch (err) {
   if (err instanceof SpidraAuthenticationError) {
     // 401: Missing or invalid Authorization header
@@ -838,8 +838,8 @@ const result = await generateText({
         prompt: z.string().describe("What data to extract"),
       }),
       execute: async ({ url, prompt }) => {
-        const job = await spidra.scrape.run({ urls: [{ url }], prompt });
-        return JSON.stringify(job.result.content);
+        const result = await spidra.scrape({ urls: [{ url }], prompt });
+        return JSON.stringify(result.content);
       },
     }),
   },
