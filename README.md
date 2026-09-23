@@ -1,6 +1,8 @@
 # Spidra Node SDK
 
-The official Node.js SDK for [Spidra](https://spidra.io) that allows you to scrape pages, run browser actions, batch-process URLs, crawl entire sites, and search the web. All results come back as structured data ready to feed into your LLM pipelines or store directly.
+This is the official Node.js SDK for [Spidra](https://spidra.io). It searches the web, scrapes pages, runs browser actions, batch-processes URLs, and crawls entire sites.
+
+Every result comes back as structured data, clean markdown ready to feed into an LLM pipeline, your own systems and research, or just store directly.
 
 ## Installation
 
@@ -35,6 +37,9 @@ console.log(result.content);
   - [Quick start](#quick-start)
   - [Table of contents](#table-of-contents)
   - [Searching](#searching)
+    - [Domain filtering](#domain-filtering)
+    - [Scrape content from results](#scrape-content-from-results)
+    - [Manual job control](#manual-job-control)
   - [Scraping](#scraping)
     - [Basic scrape](#basic-scrape)
     - [Structured output with JSON schema](#structured-output-with-json-schema)
@@ -49,7 +54,7 @@ console.log(result.content);
       - [Pagination](#pagination)
       - [Per-element actions](#per-element-actions)
       - [itemPrompt vs top-level prompt](#itemprompt-vs-top-level-prompt)
-    - [Manual job control](#manual-job-control)
+    - [Manual job control](#manual-job-control-1)
     - [Poll options](#poll-options)
   - [Batch scraping](#batch-scraping)
   - [Crawling](#crawling)
@@ -60,10 +65,12 @@ console.log(result.content);
   - [Error handling](#error-handling)
   - [Verifying webhooks](#verifying-webhooks)
   - [AI agent integration](#ai-agent-integration)
+  - [Requirements](#requirements)
+  - [License](#license)
 
 ## Searching
 
-Search runs a real query and returns structured results — titles, links, descriptions, thumbnails — the same data you'd get scraping a search engine yourself, minus the scraping. Unlike scrape/batch/crawl, a plain search usually resolves in a few seconds.
+Search runs a real query and returns structured results: titles, links, descriptions, thumbnails. It's the same data you'd get scraping a search engine yourself, minus the scraping. Unlike scrape/batch/crawl, a plain search usually resolves in a few seconds.
 
 ```typescript
 const result = await spidra.search({
@@ -85,7 +92,7 @@ By default only `web` results come back. Request more with `sources`:
 | `images` | Image results |
 | `videos` | Video results |
 
-Each source is independent — if one comes back empty or is temporarily unavailable, the others are unaffected.
+Each source is independent. If one comes back empty or is temporarily unavailable, the others are unaffected.
 
 **All search parameters:**
 
@@ -97,7 +104,7 @@ Each source is independent — if one comes back empty or is temporarily unavail
 | `country` | `string` | Two-letter country code, or `"global"` / `"eu"` / `"asia"`, for localized results. |
 | `includeDomains` | `string[]` | Only return `web` results from these domains. Mutually exclusive with `excludeDomains`. |
 | `excludeDomains` | `string[]` | Keep `web` results from these domains out. Mutually exclusive with `includeDomains`. |
-| `scrapeOptions` | `{ formats, maxResults? }` | Opt-in — also scrape each web result's page content. See below. |
+| `scrapeOptions` | `{ formats, maxResults? }` | Opt-in, also scrapes each web result's page content (see below). |
 
 ### Domain filtering
 
@@ -112,7 +119,7 @@ const result = await spidra.search({
 
 ### Scrape content from results
 
-Add `scrapeOptions` to also fetch each web result's actual page content in the same call — no second request, no separate job to poll.
+Add `scrapeOptions` to also fetch each web result's actual page content in the same call. No second request, no separate job to poll.
 
 ```typescript
 const result = await spidra.search({
@@ -123,7 +130,7 @@ const result = await spidra.search({
 result.data.web?.[0].markdown; // the scraped page's content, right there on the result
 ```
 
-This makes the search take as long as its slowest scraped page, not the usual few seconds — real scraping isn't instant, and Spidra would rather you wait once on one job than build your own polling loop around N separate scrape jobs. `maxResults` caps how many of the top-ranked web results get scraped; omit it to scrape all of them, up to a cap of 10. A result that fails to scrape or falls outside the time budget is simply left without `markdown`, not treated as an error.
+This makes the search take as long as its slowest scraped page, not the usual few seconds. Real scraping isn't instant, and Spidra would rather you wait once on one job than build your own polling loop around N separate scrape jobs. `maxResults` caps how many of the top-ranked web results get scraped; omit it to scrape all of them, up to a cap of 10. A result that fails to scrape or falls outside the time budget is simply left without `markdown`, not treated as an error.
 
 Need AI extraction, a schema, or a screenshot instead of plain markdown? Scrape that specific URL directly with [`spidra.scrape()`](#scraping).
 
@@ -157,7 +164,7 @@ console.log(result.content);
 
 When you need a guaranteed shape, pass a `schema`. The API will enforce the structure and return `null` for any missing fields rather than hallucinating values.
 
-> Define every field you want extracted — an untyped `object` with no `properties` gives the AI nothing to fill in, so those members come back empty.
+> Define every field you want extracted. An untyped `object` with no `properties` gives the AI nothing to fill in, so those members come back empty.
 
 ```typescript
 const result = await spidra.scrape({
@@ -179,11 +186,11 @@ const result = await spidra.scrape({
 });
 ```
 
-> If your schema uses a keyword the API doesn't support (e.g. `anyOf`, `$ref`), the response includes `schema_warnings` listing what was ignored — the rest of the schema still applies.
+> If your schema uses a keyword the API doesn't support (e.g. `anyOf`, `$ref`), the response includes `schema_warnings` listing what was ignored. The rest of the schema still applies.
 
 ### Structured output with Zod
 
-You can pass a [Zod](https://zod.dev) (v4) schema directly instead of hand-writing JSON Schema — the SDK converts it automatically, and `result.content` is fully typed from your schema.
+You can pass a [Zod](https://zod.dev) (v4) schema directly instead of hand-writing JSON Schema. The SDK converts it automatically, and `result.content` is fully typed from your schema.
 
 ```typescript
 import { z } from "zod";
@@ -202,10 +209,10 @@ const result = await spidra.scrape({
   schema: JobListing,
 });
 
-result.content.title; // typed as string — no casting needed
+result.content.title; // typed as string, no casting needed
 ```
 
-The same works for `batchScrape()` (types each item's `result`) and `crawl()` (types each page's `data`). Zod is an optional peer dependency — install it only if you use this (`npm install zod`). Passing `MySchema.shape` by mistake throws a helpful error.
+The same works for `batchScrape()` (types each item's `result`) and `crawl()` (types each page's `data`). Zod is an optional peer dependency, install it only if you use this (`npm install zod`). Passing `MySchema.shape` by mistake throws a helpful error.
 
 ### Geo-targeted scraping
 
@@ -436,13 +443,13 @@ const controller = new AbortController();
 
 const result = await spidra.scrape(params, {
   pollInterval: 3000,        // ms between status checks (default: 3000)
-  timeout:      600_000,     // max wait in ms before SpidraTimeoutError (default: null — wait until the job finishes)
+  timeout:      600_000,     // max wait in ms before SpidraTimeoutError (default: null, waits until the job finishes)
   signal:       controller.signal, // stop waiting (the job itself keeps running)
   maxConsecutiveErrors: 3,   // transient errors (5xx/429/network) tolerated mid-poll (default: 3)
 });
 ```
 
-By default there is no timeout — these calls wait until the job reaches a terminal state, so long crawls just work. If you set a `timeout` and it fires, the SDK throws `SpidraTimeoutError`; the job keeps running server-side, so you can keep checking it with the matching `get*` method (`getScrape()`, `getBatchScrape()`, `getCrawl()`) or cancel it. Transient errors during polling (a 502 blip, a dropped connection) don't kill the wait — polling continues unless several happen in a row.
+By default there is no timeout. These calls wait until the job reaches a terminal state, so long crawls just work. If you set a `timeout` and it fires, the SDK throws `SpidraTimeoutError`; the job keeps running server-side, so you can keep checking it with the matching `get*` method (`getScrape()`, `getBatchScrape()`, `getCrawl()`) or cancel it. Transient errors during polling (a 502 blip, a dropped connection) don't kill the wait, polling continues unless several happen in a row.
 
 ## Batch scraping
 
@@ -521,7 +528,7 @@ for (const page of job.result) {
 }
 ```
 
-`transformInstruction` is optional. When omitted (and no `schema` is set), each page's `data` field contains the raw page markdown — no AI extraction is called and no token credits are charged for extraction.
+`transformInstruction` is optional. When omitted (and no `schema` is set), each page's `data` field contains the raw page markdown. No AI extraction is called and no token credits are charged for extraction.
 
 **All crawl parameters:**
 
@@ -610,14 +617,14 @@ const { total: totalCrawls } = await spidra.crawlStats();
 
 **Get full job details:**
 
-A flat snapshot of a crawl job's config and counters — the same data `crawlHistory()` returns per row, for one job.
+A flat snapshot of a crawl job's config and counters, the same data `crawlHistory()` returns per row, for one job.
 
 ```typescript
 const details = await spidra.crawlJobDetails(jobId);
 console.log(details.status, details.pages_crawled, details.credits_used);
 ```
 
-> This endpoint returns raw database field names (`pages_crawled`, not `pagesCrawled`), unlike the rest of the SDK — same as `crawlHistory()`'s entries.
+> This endpoint returns raw database field names (`pages_crawled`, not `pagesCrawled`), unlike the rest of the SDK. Same as `crawlHistory()`'s entries.
 
 **Retry one page's AI transformation:**
 
@@ -675,7 +682,7 @@ watcher.on("item", (item) => console.log(item.url, item.status, item.result));
 await watcher.wait();
 ```
 
-Events: `snapshot` (every poll), `page`/`item` (each result exactly once — including ones that already existed when you started watching), `done` (job reached a terminal state), `error` (non-recoverable error or timeout). `watchCrawl()`/`watchBatch()` accept the same options as polling (`pollInterval`, `timeout`, `signal`) and `watcher.stop()` stops watching without cancelling the job.
+Events: `snapshot` (every poll), `page`/`item` (each result exactly once, including ones that already existed when you started watching), `done` (job reached a terminal state), `error` (non-recoverable error or timeout). `watchCrawl()`/`watchBatch()` accept the same options as polling (`pollInterval`, `timeout`, `signal`) and `watcher.stop()` stops watching without cancelling the job.
 
 ## Logs
 
@@ -720,20 +727,20 @@ for (const row of rows) {
 
 ## Retries and reliability
 
-Transient failures — network blips, 502/503/504 gateway errors — are retried automatically with exponential backoff, so a single hiccup never fails your call. Both knobs are configurable on the client:
+Transient failures (network blips, 502/503/504 gateway errors) are retried automatically with exponential backoff, so a single hiccup never fails your call. Both knobs are configurable on the client:
 
 ```typescript
 const spidra = new SpidraClient({
   apiKey:        "spd_YOUR_API_KEY",
   maxRetries:    3,   // retry attempts for transient failures (default: 3, 0 disables)
-  backoffFactor: 500, // base backoff in ms — delay is backoffFactor * 2^attempt (default: 500)
+  backoffFactor: 500, // base backoff in ms, delay is backoffFactor * 2^attempt (default: 500)
 });
 ```
 
 Safety rules the SDK follows so retries never double-charge you:
 
 - 4xx client errors are never retried.
-- Job submissions (POSTs) are only retried when the server explicitly rejected them (502/503) — never on network errors or 504s, where the job may already have been queued.
+- Job submissions (POSTs) are only retried when the server explicitly rejected them (502/503). Never on network errors or 504s, where the job may already have been queued.
 - When the server sends a `Retry-After` hint (e.g. a 503 `SERVICE_BUSY`), the SDK honors it instead of its own backoff.
 
 ## Error handling
@@ -765,16 +772,16 @@ try {
     // 403: Monthly credit limit reached
     console.error("Out of credits");
   } else if (err instanceof SpidraValidationError) {
-    // 422: Bad request body — err.errors lists each problem
+    // 422: Bad request body, err.errors lists each problem
     console.error(err.errors);
   } else if (err instanceof SpidraRateLimitError) {
-    // 429: Too many requests — metadata tells you exactly how long to wait
+    // 429: Too many requests, metadata tells you exactly how long to wait
     console.error(`Rate limited. ${err.remaining}/${err.limit} left, retry in ${err.retryAfterMs}ms`);
   } else if (err instanceof SpidraJobError) {
     // The job itself failed or was cancelled (not a transport error)
     console.error(`Job ${err.jobId} ${err.jobStatus}: ${err.message}`);
   } else if (err instanceof SpidraTimeoutError) {
-    // Your poll timeout elapsed — the job is still running server-side
+    // Your poll timeout elapsed, the job is still running server-side
     console.error(`Still running after ${err.timeoutMs}ms, check ${err.jobId} later`);
   } else if (err instanceof SpidraServerError) {
     // 5xx: Something went wrong on Spidra's side (already retried automatically)
@@ -795,7 +802,7 @@ Crawl jobs can push `crawl.page`, `crawl.completed`, and `crawl.failed` events t
 ```typescript
 import { verifySpidraWebhook } from "spidra";
 
-// Express example — use the RAW body, not the parsed JSON
+// Express example, use the RAW body, not the parsed JSON
 app.post("/webhooks/spidra", express.raw({ type: "application/json" }), async (req, res) => {
   const valid = await verifySpidraWebhook(
     req.body, // raw bytes/string of the request body
@@ -813,7 +820,7 @@ app.post("/webhooks/spidra", express.raw({ type: "application/json" }), async (r
 });
 ```
 
-The comparison is constant-time, and the helper works in Node, browsers, and edge runtimes (it uses WebCrypto). Always pass the raw request body — re-serializing parsed JSON produces different bytes and fails verification.
+The comparison is constant-time, and the helper works in Node, browsers, and edge runtimes (it uses WebCrypto). Always pass the raw request body. Re-serializing parsed JSON produces different bytes and fails verification.
 
 ## AI agent integration
 
