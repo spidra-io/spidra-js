@@ -218,4 +218,106 @@ describe("search", () => {
     expect(submittedBody.includeDomains).toEqual(["reddit.com"]);
     expect(submittedBody.scrapeOptions).toEqual({ formats: ["markdown"], maxResults: 3 });
   });
+
+  it("passes page, pageTokens, timeRange, and filetype through to the request body", async () => {
+    const fetchMock = sequenceFetch(
+      jsonResponse(200, { status: "completed", result: { success: true, data: { web: [] }, stats: { durationMs: 500 } }, error: null })
+    );
+    const client = makeClient(fetchMock);
+    await client.search(
+      {
+        query: "annual report 2026 filetype:pdf",
+        page: 2,
+        pageTokens: { web: "opaque-token" },
+        timeRange: "month",
+        filetype: "pdf",
+      },
+      POLL
+    );
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const submittedBody = JSON.parse(init.body as string);
+    expect(submittedBody.page).toBe(2);
+    expect(submittedBody.pageTokens).toEqual({ web: "opaque-token" });
+    expect(submittedBody.timeRange).toBe("month");
+    expect(submittedBody.filetype).toBe("pdf");
+  });
+
+  it("returns research and developer sources, and nextPageTokens, in the result", async () => {
+    const fetchMock = sequenceFetch(
+      jsonResponse(200, {
+        status: "completed",
+        result: {
+          success: true,
+          data: {
+            research: [{ title: "A paper", url: "https://arxiv.org/abs/1", position: 1, authors: "A. Author", doi: "10.1101/x", source: "arXiv" }],
+            developer: [{ title: "Issue: a bug", url: "https://github.com/x/y/issues/1", position: 1, authors: "octocat", source: "GitHub" }],
+            nextPageTokens: { research: "next-token" },
+          },
+          stats: { durationMs: 500 },
+        },
+        error: null,
+      })
+    );
+    const client = makeClient(fetchMock);
+    const result = await client.search({ query: "transformer attention", sources: ["research", "developer"] }, POLL);
+
+    expect(result.data.research?.[0].doi).toBe("10.1101/x");
+    expect(result.data.developer?.[0].authors).toBe("octocat");
+    expect(result.data.nextPageTokens?.research).toBe("next-token");
+  });
+
+  it("sends wait: true on the initial request", async () => {
+    const fetchMock = sequenceFetch(
+      jsonResponse(200, { status: "completed", result: { success: true, data: { web: [] }, stats: { durationMs: 500 } }, error: null })
+    );
+    const client = makeClient(fetchMock);
+    await client.search({ query: "hello world" }, POLL);
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const submittedBody = JSON.parse(init.body as string);
+    expect(submittedBody.wait).toBe(true);
+  });
+
+  it("returns the result directly, with no polling, when the API resolves inline", async () => {
+    const fetchMock = sequenceFetch(
+      jsonResponse(200, {
+        status: "completed",
+        jobId: "s3",
+        result: { success: true, data: { web: [{ title: "Hi", url: "https://x.com", position: 1 }] }, stats: { durationMs: 900 } },
+        error: null,
+      })
+    );
+    const client = makeClient(fetchMock);
+    const result = await client.search({ query: "hello world" }, POLL);
+    expect(result.data.web).toHaveLength(1);
+    // Exactly one call -- the poll loop (GET /search/:jobId) never ran.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("throws SpidraJobError immediately when the API resolves inline to a failure, with no polling", async () => {
+    const fetchMock = sequenceFetch(jsonResponse(200, { status: "failed", jobId: "s4", error: "all engines blocked" }));
+    const client = makeClient(fetchMock);
+    const err = await catchError(client.search({ query: "hello world" }, POLL));
+    expect(err).toBeInstanceOf(SpidraJobError);
+    expect(err.jobId).toBe("s4");
+    expect(err.jobStatus).toBe("failed");
+    expect(err.message).toBe("all engines blocked");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to polling when the API returns queued despite wait: true (server-side timeout)", async () => {
+    const fetchMock = sequenceFetch(
+      jsonResponse(202, { status: "queued", jobId: "s5" }),
+      jsonResponse(200, {
+        status: "completed",
+        result: { success: true, data: { web: [{ title: "Hi", url: "https://x.com", position: 1 }] }, stats: { durationMs: 25000 } },
+        error: null,
+      })
+    );
+    const client = makeClient(fetchMock);
+    const result = await client.search({ query: "hello world" }, POLL);
+    expect(result.data.web).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });

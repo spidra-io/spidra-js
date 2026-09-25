@@ -1,7 +1,7 @@
 import type { HttpClient } from "../lib/http.js";
 import { poll, type PollOptions } from "../lib/poll.js";
 import { SpidraJobError } from "../lib/errors.js";
-import type { SearchParams, SearchJobQueued, SearchJobResponse, SearchJobCompleted } from "../types/search.js";
+import type { SearchParams, SearchJobQueued, SearchJobResponse, SearchJobCompleted, SearchJobFailed } from "../types/search.js";
 
 export class SearchResource {
   constructor(private http: HttpClient) {}
@@ -20,10 +20,27 @@ export class SearchResource {
    * Submit a search job and wait for it to complete.
    * Throws `SpidraJobError` if the job fails, and `SpidraTimeoutError` if
    * `options.timeout` is set and exceeded.
+   *
+   * Sends `wait: true` on the initial request -- for a plain search (no
+   * `scrapeOptions`) that usually finishes in a couple seconds, the API can
+   * respond with the real result in this same call, skipping the poll loop
+   * below entirely. `scrapeOptions` searches (and anything that doesn't
+   * finish within the API's own wait window) fall back to the normal
+   * queued response automatically, and this method transparently continues
+   * polling from there -- the caller never has to know which path happened.
    */
   async run(params: SearchParams, options?: PollOptions): Promise<SearchJobCompleted> {
-    const { jobId } = await this.submit(params);
+    const submitted = await this.http.post<SearchJobQueued | SearchJobCompleted | SearchJobFailed>("/search", {
+      ...params,
+      wait: true,
+    });
 
+    if (submitted.status === "completed") return submitted;
+    if (submitted.status === "failed") {
+      throw new SpidraJobError(submitted.error ?? "Search job failed", submitted.jobId ?? "", "failed");
+    }
+
+    const { jobId } = submitted;
     const result = await poll(() => this.get(jobId), options, jobId);
 
     if (result.status === "failed") {

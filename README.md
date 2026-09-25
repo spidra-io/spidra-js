@@ -12,7 +12,7 @@ To install the Spidra Node SDK, you can use npm:
 npm install spidra
 ```
 
-Get your API key at [app.spidra.io](https://app.spidra.io) under **Settings** > **API Keys**.
+Get your API key at [app.spidra.io](https://app.spidra.io) under **API Keys**.
 
 ## Quick start
 
@@ -72,7 +72,7 @@ console.log(result.content);
 
 ## Searching
 
-Search runs a real query and returns structured results: titles, links, descriptions, thumbnails. It's the same data you'd get scraping a search engine yourself, minus the scraping. Unlike scrape/batch/crawl, a plain search usually resolves in a few seconds.
+Search runs a real query and returns structured results: titles, links, descriptions, thumbnails. It's the same data you'd get scraping a search engine yourself, minus the scraping. Unlike scrape/batch/crawl, a plain search usually resolves in a few seconds, often within the single `search()` call below with no polling at all.
 
 ```typescript
 const result = await spidra.search({
@@ -93,6 +93,8 @@ By default only `web` results come back. Request more with `sources`:
 | `news` | News articles |
 | `images` | Image results |
 | `videos` | Video results |
+| `research` | Academic papers from arXiv, PubMed, bioRxiv, and medRxiv |
+| `developer` | GitHub issues and PRs. |
 
 Each source is independent. If one comes back empty or is temporarily unavailable, the others are unaffected.
 
@@ -101,12 +103,64 @@ Each source is independent. If one comes back empty or is temporarily unavailabl
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `query` | `string` | **Required.** What to search for. |
-| `sources` | `("web" \| "news" \| "images" \| "videos")[]` | Which result types to request. Defaults to `["web"]`. |
+| `sources` | `("web" \| "news" \| "images" \| "videos" \| "research" \| "developer")[]` | Which result types to request. Defaults to `["web"]`. |
 | `limit` | `number` | Results per source, 1–20. Defaults to 10. |
+| `page` | `number` | 1-indexed page number. Prefer `pageTokens` once you have one, it's a more reliable way to continue to the next page than a bare page number. |
+| `pageTokens` | `Partial<Record<Source, string>>` | Opaque per-source token from a prior response's `nextPageTokens`, for reliably continuing to that source's next page. |
+| `timeRange` | `"hour" \| "day" \| "week" \| "month" \| "year"` | Restricts results to a recency window. Support can vary by source and query, and a window that can't be honored is simply ignored. |
 | `country` | `string` | Two-letter country code, or `"global"` / `"eu"` / `"asia"`, for localized results. |
-| `includeDomains` | `string[]` | Only return `web` results from these domains. Mutually exclusive with `excludeDomains`. |
-| `excludeDomains` | `string[]` | Keep `web` results from these domains out. Mutually exclusive with `includeDomains`. |
+| `includeDomains` | `string[]` | Only return `web` results from these domains. Mutually exclusive with `excludeDomains`. Doesn't apply to `research`/`developer`. |
+| `excludeDomains` | `string[]` | Keep `web` results from these domains out. Mutually exclusive with `includeDomains`. Doesn't apply to `research`/`developer`. |
+| `filetype` | `"pdf"` | Restricts results to PDFs. |
 | `scrapeOptions` | `{ formats, maxResults? }` | Opt-in, also scrapes each web result's page content (see below). |
+
+### Research and developer sources
+
+`research` searches academic papers, and returns `authors` and `doi` alongside the usual fields:
+
+```typescript
+const result = await spidra.search({
+  query: "transformer attention mechanisms",
+  sources: ["research"],
+});
+
+for (const paper of result.data.research ?? []) {
+  console.log(paper.title, paper.authors, paper.doi);
+}
+```
+
+`developer` searches GitHub issues and PRs. Write the query the way you'd type it into GitHub's own search, qualifiers and all:
+
+```typescript
+const result = await spidra.search({
+  query: "memory leak is:issue repo:vercel/next.js",
+  sources: ["developer"],
+});
+```
+
+> `includeDomains`, `excludeDomains`, and `filetype` only apply to `web`/`news`/`images`/`videos`. They're not supported on `research` or `developer`.
+
+### Pagination and time range
+
+Pass the previous response's `nextPageTokens` back as `pageTokens` to get the next page of a specific source:
+
+```typescript
+const page1 = await spidra.search({ query: "espresso machine reviews", limit: 10 });
+const page2 = await spidra.search({
+  query: "espresso machine reviews",
+  pageTokens: page1.data.nextPageTokens,
+});
+```
+
+`timeRange` narrows results to a recency window, useful for sources like `news` where older results matter less:
+
+```typescript
+const result = await spidra.search({
+  query: "product launch",
+  sources: ["news"],
+  timeRange: "week",
+});
+```
 
 ### Domain filtering
 
@@ -140,7 +194,7 @@ Need AI extraction, a schema, or a screenshot instead of plain markdown? Scrape 
 
 ### Manual job control
 
-If you'd rather not wait on the call, submit the search and check on it yourself whenever you're ready:
+If you'd rather not wait on the call at all, submit the search and check on it yourself whenever you're ready. Unlike `search()`, this never tries to resolve inline, it always returns a `jobId` immediately:
 
 ```typescript
 const { jobId } = await spidra.startSearch({ query: "electric cars" });

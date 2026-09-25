@@ -213,7 +213,12 @@ export class SpidraClient {
 
   // ---- Search ----------------------------------------------------------
 
-  /** Run a search and wait for the result. A plain search usually resolves in a few seconds; one with `scrapeOptions` set takes as long as the slowest page it scrapes. */
+  /**
+   * Run a search and wait for the result. A plain search usually resolves in
+   * a few seconds -- often within this single call, no polling at all --
+   * while one with `scrapeOptions` set takes as long as the slowest page it
+   * scrapes and always polls.
+   */
   async search(params: SearchParams, options?: PollOptions): Promise<SearchResult> {
     const job = await this.searchResource.run(params, options);
     return job.result;
