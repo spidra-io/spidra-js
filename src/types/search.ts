@@ -14,7 +14,8 @@ export type SearchSource = "web" | "news" | "images" | "videos" | "research" | "
 export type SearchTimeRange = "hour" | "day" | "week" | "month" | "year";
 
 export interface SearchScrapeOptions {
-  formats: ("markdown" | "screenshot")[];
+  /** Markdown-only -- want a screenshot of a specific result? Scrape that URL directly with `client.scrape()` instead. */
+  formats: ("markdown")[];
   /** Caps how many of the ranked web results actually get scraped, top-down. Omit to scrape every web result returned. */
   maxResults?: number;
 }
@@ -88,8 +89,6 @@ export interface SearchResultItem {
   doi?: string;
   /** web results only, present when `scrapeOptions` was requested and enrichment succeeded before the job's budget ran out */
   markdown?: string;
-  /** web results only, present when `scrapeOptions.formats` included "screenshot" */
-  screenshotUrl?: string;
 }
 
 export interface SearchExtras {
