@@ -93,6 +93,8 @@ export interface ScrapeUrlResult {
   markdownContent?: string;
   success: boolean;
   screenshotUrl?: string | null;
+  /** Heuristic warning, not a hard failure: the cleaned content came back under ~200 characters, more likely a bot check, cookie wall, or dead redirect than the real page. */
+  lowContent?: boolean;
 }
 
 export interface ScrapeResult<T = unknown> {
@@ -100,6 +102,8 @@ export interface ScrapeResult<T = unknown> {
   data: ScrapeUrlResult[];
   screenshots: string[];
   ai_extraction_failed: boolean;
+  /** True when AI ran successfully but returned structurally empty data (e.g. `{"rooms":[]}`), only set when a prompt or schema was used. */
+  extraction_empty?: boolean;
   stats: {
     durationMs: number;
     captchaSolvedCount: number;
