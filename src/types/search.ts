@@ -126,6 +126,13 @@ export interface SearchResult {
   success: boolean;
   data: SearchResponseData;
   stats: SearchStats;
+  /**
+   * The search log this result is recorded under. Nothing needs to be done
+   * with this for pagination to work -- continuing with `pageTokens` keeps
+   * a later page linked back to this same search automatically. Exposed
+   * mainly as a direct reference to the log entry itself.
+   */
+  logUuid?: string;
 }
 
 // --- Job status shapes ---

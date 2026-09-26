@@ -170,6 +170,7 @@ describe("search", () => {
           success: true,
           data: { web: [{ title: "Hi", url: "https://x.com", position: 1 }] },
           stats: { durationMs: 1200 },
+          logUuid: "log-1",
         },
         error: null,
       })
@@ -178,6 +179,7 @@ describe("search", () => {
     const result = await client.search({ query: "hello world" }, POLL);
     expect(result.data.web).toHaveLength(1);
     expect(result.data.web?.[0].title).toBe("Hi");
+    expect(result.logUuid).toBe("log-1");
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
