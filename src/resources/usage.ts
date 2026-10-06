@@ -1,5 +1,5 @@
 import type { HttpClient } from "../lib/http.js";
-import type { UsageRange, UsageStatRow } from "../types/usage.js";
+import type { AccountSummary, UsageRange, UsageStatRow } from "../types/usage.js";
 
 export class UsageResource {
   constructor(private http: HttpClient) {}
@@ -15,6 +15,12 @@ export class UsageResource {
     const res = await this.http.get<{ status: string; data: UsageStatRow[] }>(
       `/usage-stats?range=${range}`
     );
+    return res.data;
+  }
+
+  /** Get your plan, credit balance and proxy bandwidth. */
+  async account(): Promise<AccountSummary> {
+    const res = await this.http.get<{ status: string; data: AccountSummary }>("/account");
     return res.data;
   }
 }

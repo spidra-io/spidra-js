@@ -323,3 +323,21 @@ describe("search", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("account", () => {
+  it("returns the unwrapped account summary from GET /account", async () => {
+    const summary = {
+      plan: { name: "Starter" },
+      credits: { limit: 5000, used: 1240, remaining: 3760, billingCycleStart: "2026-10-01T00:00:00.000Z" },
+      proxyBandwidth: { limitMb: 500, usedMb: 112.4, remainingMb: 387.6 },
+      subscription: { status: "active" },
+    };
+    const fetchMock = sequenceFetch(jsonResponse(200, { status: "success", data: summary }));
+    const client = makeClient(fetchMock);
+    const result = await client.account();
+    expect(result).toEqual(summary);
+    expect(result.credits.remaining).toBe(3760);
+    const [url] = (fetchMock as unknown as { mock: { calls: [string][] } }).mock.calls[0];
+    expect(String(url)).toBe("https://api.test/account");
+  });
+});

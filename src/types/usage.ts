@@ -13,3 +13,23 @@ export interface UsageStatRow {
   latency: number;
   credits: number;
 }
+
+export interface AccountSummary {
+  plan: { name: string };
+  credits: {
+    /** Credits available this period, including any top-up credits. */
+    limit: number;
+    /** Credits used this period, including credits held by jobs that are still running. */
+    used: number;
+    /** `limit` minus `used`, never below 0. */
+    remaining: number;
+    billingCycleStart: string | null;
+  };
+  proxyBandwidth: {
+    limitMb: number;
+    usedMb: number;
+    remainingMb: number;
+  };
+  /** `null` on the free plan with no subscription. */
+  subscription: { status: string } | null;
+}

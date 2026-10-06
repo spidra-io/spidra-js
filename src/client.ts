@@ -38,7 +38,7 @@ import type {
 } from "./types/crawl.js";
 import type { SearchParams, SearchResult, SearchJobQueued, SearchJobResponse } from "./types/search.js";
 import type { ScrapeLogsParams, ScrapeLogsResponse, ScrapeLogDetail } from "./types/logs.js";
-import type { UsageRange, UsageStatRow } from "./types/usage.js";
+import type { AccountSummary, UsageRange, UsageStatRow } from "./types/usage.js";
 
 /**
  * The Spidra client. Every method that submits a job comes in three shapes:
@@ -251,5 +251,10 @@ export class SpidraClient {
   /** Get usage statistics for the given time range ("7d" | "30d" | "weekly"). */
   usage(range: UsageRange): Promise<UsageStatRow[]> {
     return this.usageResource.get(range);
+  }
+
+  /** Get your plan, remaining credits and proxy bandwidth. */
+  account(): Promise<AccountSummary> {
+    return this.usageResource.account();
   }
 }

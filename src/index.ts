@@ -71,7 +71,7 @@ export type {
   ScrapeLog,
   ScrapeLogDetail,
 } from "./types/logs.js";
-export type { UsageRange, UsageStatRow } from "./types/usage.js";
+export type { AccountSummary, UsageRange, UsageStatRow } from "./types/usage.js";
 export type { PollOptions } from "./lib/poll.js";
 export type {
   SearchSource,
