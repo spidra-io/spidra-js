@@ -1,6 +1,7 @@
 import { HttpClient } from "./lib/http.js";
 import { ScrapeResource } from "./resources/scrape.js";
 import { BatchResource } from "./resources/batch.js";
+import { BulkResource } from "./resources/bulk.js";
 import { CrawlResource } from "./resources/crawl.js";
 import { LogsResource } from "./resources/logs.js";
 import { UsageResource } from "./resources/usage.js";
@@ -37,6 +38,7 @@ import type {
   CrawlRetryPageResponse,
 } from "./types/crawl.js";
 import type { SearchParams, SearchResult, SearchJobQueued, SearchJobResponse } from "./types/search.js";
+import type { BulkEstimate, BulkScrapeParams, BulkResult } from "./types/bulk.js";
 import type { ScrapeLogsParams, ScrapeLogsResponse, ScrapeLogDetail } from "./types/logs.js";
 import type { AccountSummary, UsageRange, UsageStatRow } from "./types/usage.js";
 
@@ -48,6 +50,7 @@ import type { AccountSummary, UsageRange, UsageStatRow } from "./types/usage.js"
 export class SpidraClient {
   private scrapeResource: ScrapeResource;
   private batchResource: BatchResource;
+  private bulkResource: BulkResource;
   private crawlResource: CrawlResource;
   private logsResource: LogsResource;
   private usageResource: UsageResource;
@@ -57,6 +60,7 @@ export class SpidraClient {
     const http = new HttpClient(config);
     this.scrapeResource = new ScrapeResource(http);
     this.batchResource = new BatchResource(http);
+    this.bulkResource = new BulkResource(this.batchResource);
     this.crawlResource = new CrawlResource(http);
     this.logsResource = new LogsResource(http);
     this.usageResource = new UsageResource(http);
@@ -92,6 +96,20 @@ export class SpidraClient {
     options?: PollOptions
   ): Promise<BatchScrapeResponse<InferSchemaOutput<S>>> {
     return this.batchResource.run<S>(params, options);
+  }
+
+  /**
+   * Scrape one URL template across lists of values (every title in every city, say) and get back
+   * one merged list with duplicates removed. Each page costs 1 credit, plus AI tokens if you set a
+   * prompt or schema. Call `estimateBulk` first to see the cost.
+   */
+  bulkScrape<T = Record<string, unknown>>(params: BulkScrapeParams, options?: PollOptions): Promise<BulkResult<T>> {
+    return this.bulkResource.run<T>(params, options);
+  }
+
+  /** How many pages and credits a bulk search would use, without running it. */
+  estimateBulk(params: BulkScrapeParams): BulkEstimate {
+    return this.bulkResource.estimate(params);
   }
 
   /** Submit a batch scrape and return immediately without waiting. */

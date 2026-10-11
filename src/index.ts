@@ -19,6 +19,7 @@ export type { WatchOptions, CrawlWatcherEvents, BatchWatcherEvents } from "./lib
 
 // Types
 export type { SpidraConfig } from "./types/client.js";
+export type { BulkScrapeParams, BulkEstimate, BulkProgress, BulkStats, BulkResult } from "./types/bulk.js";
 export type { SchemaInput, InferSchemaOutput, ZodLikeSchema } from "./lib/schema.js";
 export type {
   ScrapeParams,
