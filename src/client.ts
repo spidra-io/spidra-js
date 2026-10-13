@@ -38,6 +38,7 @@ import type {
   CrawlRetryPageResponse,
   CrawlReportParams,
   CrawlReportResponse,
+  CrawlPagesParams,
   MapParams,
   MapResult,
 } from "./types/crawl.js";
@@ -175,8 +176,8 @@ export class SpidraClient {
   }
 
   /** Get crawled pages with signed download URLs. */
-  crawlPages<T = unknown>(jobId: string): Promise<CrawlPagesResponse<T>> {
-    return this.crawlResource.pages<T>(jobId);
+  crawlPages<T = unknown>(jobId: string, params?: CrawlPagesParams): Promise<CrawlPagesResponse<T>> {
+    return this.crawlResource.pages<T>(jobId, params);
   }
 
   /** Cancel a queued or running crawl job. Pages already processed are preserved. */

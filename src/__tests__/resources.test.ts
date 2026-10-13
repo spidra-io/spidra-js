@@ -133,6 +133,34 @@ describe("crawl", () => {
     expect(blob).toBeInstanceOf(Blob);
     expect(fetchMock.mock.calls[0][0]).toBe("https://api.test/crawl/c1/download?include=markdown,data");
   });
+  it("crawl() reads every page when a large crawl's inline result is truncated", async () => {
+    const fetchMock = sequenceFetch(
+      jsonResponse(200, { status: "queued", jobId: "big" }),
+      jsonResponse(200, {
+        status: "completed",
+        result: [{ url: "https://x.com/1", data: { n: 1 } }],
+        totalPages: 2,
+        resultTruncated: true,
+      }),
+      jsonResponse(200, {
+        pages: [
+          { id: "a", url: "https://x.com/1", status: "success", data: '{"n":1}', error_message: null, html: null, markdown: null, created_at: "" },
+          { id: "b", url: "https://x.com/2", status: "success", data: '{"n":2}', error_message: null, html: null, markdown: null, created_at: "" },
+        ],
+        total: 2,
+        offset: 0,
+        limit: 1000,
+        hasMore: false,
+      })
+    );
+    const client = makeClient(fetchMock);
+    const job = await client.crawl({ baseUrl: "https://x.com", crawlInstruction: "all", maxPages: 500 }, POLL);
+    expect(job.result).toHaveLength(2);
+    expect(job.result[1].data).toEqual({ n: 2 });
+    expect(job.resultTruncated).toBe(false);
+    expect(fetchMock.mock.calls[2][0]).toBe("https://api.test/crawl/big/pages?offset=0&limit=1000");
+  });
+
   it("crawlReport() reads the report with reason and paging filters", async () => {
     const report = {
       understoodAs: "Product pages",

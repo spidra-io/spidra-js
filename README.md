@@ -602,7 +602,7 @@ for (const page of job.result) {
 | `crawlInstruction` | `string` | Which pages to discover. Defaults to `"Find all pages on the website"`. |
 | `transformInstruction` | `string` | What to extract from each page. Omit to get raw markdown with no AI charges. |
 | `schema` | `object` | JSON Schema for structured per-page output. Root must be `type: "object"`. |
-| `maxPages` | `number` | Most pages returned, 1 to 50. Defaults to 5. |
+| `maxPages` | `number` | Most pages returned. Defaults to 5. Up to 100 on Free, 1,000 on Starter, 5,000 on Builder and 10,000 on Pro. |
 | `maxDepth` | `number` | Max link depth from the base URL. `0` = base URL only. Omit for no limit. |
 | `includePaths` | `string[]` | Only crawl pages whose path matches one of these patterns. |
 | `excludePaths` | `string[]` | Skip pages whose path matches any of these patterns. |
@@ -644,6 +644,8 @@ const job = await spidra.crawl({
   ignoreQueryParams:  true,
 });
 ```
+
+`crawl()` returns every page, however large the crawl. The status endpoint keeps only the first 100 pages inline, so for bigger crawls `crawl()` reads the rest for you. When you poll yourself, read them in batches with `crawlPages(jobId, { offset, limit })` (up to 1,000 per call).
 
 Each crawled page includes `html` and `markdown` fields with S3-signed URLs that expire after 1 hour:
 

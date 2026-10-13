@@ -8,6 +8,7 @@ export interface CrawlParams<S extends SchemaInput = SchemaInput> {
   transformInstruction?: string;
   /** JSON Schema object defining the exact output structure for each page — or a Zod v4 schema, converted automatically. */
   schema?: S;
+  /** Most pages to return. Defaults to 5. The limit depends on the plan: Free 100, Starter 1,000, Builder 5,000, Pro 10,000. */
   maxPages?: number;
   maxDepth?: number;
   includePaths?: string[];
@@ -54,6 +55,10 @@ export interface CrawlJobPending {
 export interface CrawlJobCompleted<T = unknown> {
   status: "completed";
   result: CrawlPageResult<T>[];
+  /** Pages the crawl returned in total. */
+  totalPages?: number;
+  /** True when `result` holds only the first pages of a large crawl (the API keeps 100 inline). `crawl()` fetches the rest for you. */
+  resultTruncated?: boolean;
 }
 
 export interface CrawlJobFailed {
@@ -85,6 +90,18 @@ export interface CrawlPage<T = unknown> {
 
 export interface CrawlPagesResponse<T = unknown> {
   pages: CrawlPage<T>[];
+  /** Pages in the crawl, across all batches. */
+  total?: number;
+  offset?: number;
+  limit?: number;
+  hasMore?: boolean;
+}
+
+export interface CrawlPagesParams {
+  /** Pages to skip. Default 0. */
+  offset?: number;
+  /** Pages to return, up to 1,000. Default 1,000. */
+  limit?: number;
 }
 
 export interface CrawlHistoryParams {

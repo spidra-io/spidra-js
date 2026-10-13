@@ -66,6 +66,7 @@ export type {
   CrawlJobDetails,
   CrawlRetryPageResponse,
   CrawlReportParams,
+  CrawlPagesParams,
   CrawlReport,
   CrawlReportResponse,
   CrawlSkipReason,

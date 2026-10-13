@@ -9,6 +9,8 @@ import type {
   CrawlJobResponse,
   CrawlJobCompleted,
   CrawlPagesResponse,
+  CrawlPage,
+  CrawlPagesParams,
   CrawlHistoryParams,
   CrawlHistoryResponse,
   CrawlStats,
@@ -20,6 +22,16 @@ import type {
   MapParams,
   MapResult,
 } from "../types/crawl.js";
+
+/** crawl_pages rows store data as JSON text; give callers the object, or the text when it isn't JSON. */
+function parseData(data: unknown): unknown {
+  if (typeof data !== "string") return data;
+  try {
+    return JSON.parse(data);
+  } catch {
+    return data;
+  }
+}
 
 export class CrawlResource {
   constructor(private http: HttpClient) {}
@@ -63,9 +75,25 @@ export class CrawlResource {
     return this.http.get<CrawlJobResponse<T>>(`/crawl/${jobId}`);
   }
 
-  /** Get crawled pages with signed download URLs. */
-  pages<T = unknown>(jobId: string): Promise<CrawlPagesResponse<T>> {
-    return this.http.get<CrawlPagesResponse<T>>(`/crawl/${jobId}/pages`);
+  /** Get crawled pages with signed download URLs, 1,000 at a time. Use `offset` and `limit` to read a large crawl in batches. */
+  pages<T = unknown>(jobId: string, params: CrawlPagesParams = {}): Promise<CrawlPagesResponse<T>> {
+    const query = new URLSearchParams();
+    if (params.offset != null) query.set("offset", String(params.offset));
+    if (params.limit != null) query.set("limit", String(params.limit));
+    const qs = query.toString();
+    return this.http.get<CrawlPagesResponse<T>>(`/crawl/${jobId}/pages${qs ? `?${qs}` : ""}`);
+  }
+
+  /** Every page of a crawl, read in batches of 1,000. */
+  async allPages<T = unknown>(jobId: string): Promise<CrawlPage<T>[]> {
+    const all: CrawlPage<T>[] = [];
+    for (;;) {
+      const batch = await this.pages<T>(jobId, { offset: all.length, limit: 1000 });
+      all.push(...batch.pages);
+      if (!batch.pages.length || batch.hasMore === false || (batch.total != null && all.length >= batch.total)) break;
+      if (batch.hasMore === undefined) break;
+    }
+    return all;
   }
 
   /** Re-extract data from an existing crawl with a new transform instruction (no re-crawling). */
@@ -127,7 +155,20 @@ export class CrawlResource {
       throw new SpidraJobError("Crawl job was cancelled", jobId, "cancelled");
     }
 
-    return result as CrawlJobCompleted<InferSchemaOutput<S>>;
+    const completed = result as CrawlJobCompleted<InferSchemaOutput<S>>;
+    // Large crawls keep only their first 100 pages inline; read every page so `result` is complete.
+    if (completed.resultTruncated) {
+      const pages = await this.allPages<InferSchemaOutput<S>>(jobId);
+      completed.result = pages.map(p => ({
+        url: p.url,
+        title: p.title,
+        data: parseData(p.data) as InferSchemaOutput<S>,
+        html: p.html,
+        markdown: p.markdown,
+      }));
+      completed.resultTruncated = false;
+    }
+    return completed;
   }
 
   /**
