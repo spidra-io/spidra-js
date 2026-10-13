@@ -65,6 +65,14 @@ export type {
   CrawlCancelResponse,
   CrawlJobDetails,
   CrawlRetryPageResponse,
+  CrawlReportParams,
+  CrawlReport,
+  CrawlReportResponse,
+  CrawlSkipReason,
+  CrawlSkippedUrl,
+  MapParams,
+  MapLink,
+  MapResult,
 } from "./types/crawl.js";
 export type {
   ScrapeLogsParams,

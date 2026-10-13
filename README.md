@@ -60,6 +60,8 @@ console.log(result.content);
     - [Poll options](#poll-options)
   - [Batch scraping](#batch-scraping)
   - [Crawling](#crawling)
+    - [Why a page was skipped](#why-a-page-was-skipped)
+  - [Mapping a site](#mapping-a-site)
   - [Watching jobs (streaming results)](#watching-jobs-streaming-results)
   - [Logs](#logs)
   - [Usage statistics](#usage-statistics)
@@ -600,8 +602,8 @@ for (const page of job.result) {
 | `crawlInstruction` | `string` | Which pages to discover. Defaults to `"Find all pages on the website"`. |
 | `transformInstruction` | `string` | What to extract from each page. Omit to get raw markdown with no AI charges. |
 | `schema` | `object` | JSON Schema for structured per-page output. Root must be `type: "object"`. |
-| `maxPages` | `number` | Cap on pages crawled. |
-| `maxDepth` | `number` | Max link depth from the base URL. `0` = base URL only. |
+| `maxPages` | `number` | Most pages returned, 1 to 50. Defaults to 5. |
+| `maxDepth` | `number` | Max link depth from the base URL. `0` = base URL only. Omit for no limit. |
 | `includePaths` | `string[]` | Only crawl pages whose path matches one of these patterns. |
 | `excludePaths` | `string[]` | Skip pages whose path matches any of these patterns. |
 | `allowSubdomains` | `boolean` | Follow links to subdomains of the base domain. |
@@ -610,7 +612,12 @@ for (const page of job.result) {
 | `webhookUrl` | `string` | URL that receives POST notifications as the job progresses. |
 | `useProxy` | `boolean` | Route requests through a residential proxy. |
 | `proxyCountry` | `string` | Two-letter country code for geo-targeted proxy routing. |
+| `scrapeMode` | `"fast" \| "default"` | `"fast"` reads pages over HTTP and opens a browser only for pages that need one. `"default"` uses a browser for every page. |
 | `cookies` | `string` | Cookie string for authenticated crawls. |
+| `useSitemap` | `boolean` | Read the site's sitemap to find pages. Defaults to `true`. |
+| `respectRobots` | `boolean` | Follow the site's robots.txt rules and its Crawl-delay. Defaults to `false`. |
+
+Spidra reads category, listing and section pages to find the pages you asked for. Those pages are not returned and you are not charged for them. Each returned page has `depth` (clicks from `baseUrl`) and `parentUrl` (the page it was found on).
 
 If you don't want to hold a connection open for a long crawl, submit it and check back whenever you like:
 
@@ -697,6 +704,57 @@ const blob = await spidra.downloadCrawlResults(jobId, ["markdown", "data"]);
 ```
 
 `include` defaults to `["html", "markdown", "data"]` if you omit it.
+
+### Why a page was skipped
+
+When a crawl finishes, its report says how Spidra understood the instruction, how many pages it read only to find others, and every link it chose not to follow, with the reason and the page the link was on:
+
+```typescript
+const { report } = await spidra.crawlReport(jobId);
+
+console.log(report?.understoodAs);       // "Individual blog posts"
+console.log(report?.navigationPages);    // pages read to find them (free)
+for (const s of report?.skipped ?? []) {
+  console.log(s.reason, s.count, s.description);
+}
+
+// List the URLs for one reason, 200 at a time
+const notRelevant = await spidra.crawlReport(jobId, { reason: "not_relevant", limit: 200, offset: 0 });
+for (const u of notRelevant.report?.skippedUrls ?? []) {
+  console.log(u.url, "found on", u.foundOn);
+}
+```
+
+Reasons: `not_relevant`, `outside_domain`, `include_pattern`, `exclude_pattern`, `file_type`, `other_version_or_language`, `duplicate_page`, `redirected_off_site`, `robots_txt` and `action_link` (links like add to cart or log out). `report` is `null` while the crawl is still running and for crawls that ran before reports existed.
+
+## Mapping a site
+
+`map()` lists a site's page URLs without scraping them. It reads the sitemap and the links on the site's main pages, and answers in the same request (usually a few seconds). It costs 1 credit, and nothing when no URLs are found.
+
+```typescript
+const { links, total, scanned } = await spidra.map({
+  url:    "https://docs.python.org/3/",
+  search: "asyncio",   // optional: best matches first
+  limit:  100,
+});
+
+for (const link of links) {
+  console.log(link.url, link.title);
+}
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `url` | `string` | **Required.** The website to map. |
+| `search` | `string` | Only return URLs related to these words, best matches first. |
+| `limit` | `number` | Most URLs returned, 1 to 5000. Defaults to 500. |
+| `sitemap` | `"include" \| "only" \| "skip"` | `"include"` reads the sitemap and page links, `"only"` the sitemap, `"skip"` the links. Defaults to `"include"`. |
+| `includeSubdomains` | `boolean` | Include URLs on subdomains. |
+| `ignoreQueryParams` | `boolean` | Treat URLs that differ only by query string as one. Defaults to `true`. |
+| `respectRobots` | `boolean` | Leave out URLs the site's robots.txt disallows. |
+| `cookies` | `string` | Cookie string for pages behind a login. |
+
+`total` is how many URLs matched, `scanned` how many were found before the search filter. Map is a good first step before a batch scrape: pick the URLs you want, then scrape exactly those.
 
 ## Watching jobs (streaming results)
 

@@ -36,6 +36,10 @@ import type {
   CrawlCancelResponse,
   CrawlJobDetails,
   CrawlRetryPageResponse,
+  CrawlReportParams,
+  CrawlReportResponse,
+  MapParams,
+  MapResult,
 } from "./types/crawl.js";
 import type { SearchParams, SearchResult, SearchJobQueued, SearchJobResponse } from "./types/search.js";
 import type { BulkEstimate, BulkScrapeParams, BulkResult } from "./types/bulk.js";
@@ -193,6 +197,16 @@ export class SpidraClient {
   /** Get total crawl job count for the authenticated user. */
   crawlStats(): Promise<CrawlStats> {
     return this.crawlResource.stats();
+  }
+
+  /** What a finished crawl skipped and why (filter with `reason`, page with `limit`/`offset`). */
+  crawlReport(jobId: string, params?: CrawlReportParams): Promise<CrawlReportResponse> {
+    return this.crawlResource.report(jobId, params);
+  }
+
+  /** List the page URLs of a site without scraping them, optionally ranked by a search. 1 credit per call. */
+  map(params: MapParams): Promise<MapResult> {
+    return this.crawlResource.map(params);
   }
 
   /** Get a flat details snapshot for a crawl job (config + counters), distinct from `getCrawl()`'s job-queue poll shape. */

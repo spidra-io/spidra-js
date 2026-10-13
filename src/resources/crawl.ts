@@ -15,6 +15,10 @@ import type {
   CrawlCancelResponse,
   CrawlJobDetails,
   CrawlRetryPageResponse,
+  CrawlReportParams,
+  CrawlReportResponse,
+  MapParams,
+  MapResult,
 } from "../types/crawl.js";
 
 export class CrawlResource {
@@ -27,6 +31,21 @@ export class CrawlResource {
     if (params.limit != null) query.set("limit", String(params.limit));
     const qs = query.toString();
     return this.http.get<CrawlHistoryResponse>(`/crawl/history${qs ? `?${qs}` : ""}`);
+  }
+
+  /** What a finished crawl skipped and why, and how it understood the instruction. */
+  report(jobId: string, params: CrawlReportParams = {}): Promise<CrawlReportResponse> {
+    const query = new URLSearchParams();
+    if (params.reason) query.set("reason", params.reason);
+    if (params.limit != null) query.set("limit", String(params.limit));
+    if (params.offset != null) query.set("offset", String(params.offset));
+    const qs = query.toString();
+    return this.http.get<CrawlReportResponse>(`/crawl/${encodeURIComponent(jobId)}/report${qs ? `?${qs}` : ""}`);
+  }
+
+  /** List the page URLs of a site without scraping them. Answers in the same request. */
+  map(params: MapParams): Promise<MapResult> {
+    return this.http.post<MapResult>("/map", params);
   }
 
   /** Get total crawl job count for the authenticated user. */

@@ -18,9 +18,13 @@ export interface CrawlParams<S extends SchemaInput = SchemaInput> {
   webhookUrl?: string;
   useProxy?: boolean;
   proxyCountry?: ProxyCountry;
-  /** "fast" skips the browser for a plain HTTP fetch; "default" (the default) renders with a real browser. */
+  /** "fast" fetches pages over HTTP first and opens a browser only for pages that need one; "default" uses a browser for every page. */
   scrapeMode?: "fast" | "default";
   cookies?: string;
+  /** Follow the site's robots.txt rules (and its Crawl-delay). Default false. */
+  respectRobots?: boolean;
+  /** Read the site's sitemap to find pages. Default true. */
+  useSitemap?: boolean;
 }
 
 export interface CrawlQueued {
@@ -36,6 +40,10 @@ export interface CrawlPageResult<T = unknown> {
   data?: T;
   html?: string | null;
   markdown?: string | null;
+  /** Clicks away from baseUrl. */
+  depth?: number;
+  /** The page this one was found on. */
+  parentUrl?: string | null;
 }
 
 export interface CrawlJobPending {
@@ -163,4 +171,80 @@ export interface CrawlRetryPageResponse<T = unknown> {
   tokensUsed: number;
   creditsUsed: number;
   message: string;
+}
+
+export interface CrawlReportParams {
+  /** Only list skipped URLs with this reason, e.g. "not_relevant". */
+  reason?: string;
+  /** Default 200, maximum 2000. */
+  limit?: number;
+  offset?: number;
+}
+
+export interface CrawlSkipReason {
+  /** Machine-readable reason, e.g. "not_relevant", "outside_domain", "robots_txt". */
+  reason: string;
+  count: number;
+  /** The reason in plain language. */
+  description: string;
+}
+
+export interface CrawlSkippedUrl {
+  url: string;
+  reason: string;
+  /** The page the link was found on. */
+  foundOn: string | null;
+}
+
+export interface CrawlReport {
+  /** How the crawl understood the instruction. */
+  understoodAs: string | null;
+  /** Pages read only to find the wanted ones (not returned, not billed). */
+  navigationPages: number;
+  skippedTotal: number;
+  skipped: CrawlSkipReason[];
+  skippedUrls: CrawlSkippedUrl[];
+  skippedUrlsTotal: number;
+}
+
+export interface CrawlReportResponse {
+  status: "success";
+  /** Null for crawls that ran before reports existed, or while a crawl is still running. */
+  report: CrawlReport | null;
+  message?: string;
+}
+
+export interface MapParams {
+  /** The website to map. */
+  url: string;
+  /** Only return URLs related to these words, best matches first. */
+  search?: string;
+  /** Maximum URLs returned. Default 500, maximum 5000. */
+  limit?: number;
+  /** "include" (default) reads the sitemap and page links, "only" reads the sitemap only, "skip" reads links only. */
+  sitemap?: "include" | "skip" | "only";
+  includeSubdomains?: boolean;
+  /** Treat URLs that differ only by query string as one. Default true. */
+  ignoreQueryParams?: boolean;
+  respectRobots?: boolean;
+  cookies?: string;
+}
+
+export interface MapLink {
+  url: string;
+  /** The link text the URL was found with, when it came from a page. */
+  title?: string;
+}
+
+export interface MapResult {
+  status: "success";
+  links: MapLink[];
+  /** URLs that matched (all URLs found when there is no search). */
+  total: number;
+  /** All URLs found on the site, before the search filter. */
+  scanned?: number;
+  sources: { sitemap: number; pages: number };
+  creditsUsed: number;
+  durationMs: number;
+  message?: string;
 }

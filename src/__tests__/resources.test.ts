@@ -133,6 +133,62 @@ describe("crawl", () => {
     expect(blob).toBeInstanceOf(Blob);
     expect(fetchMock.mock.calls[0][0]).toBe("https://api.test/crawl/c1/download?include=markdown,data");
   });
+  it("crawlReport() reads the report with reason and paging filters", async () => {
+    const report = {
+      understoodAs: "Product pages",
+      navigationPages: 3,
+      skippedTotal: 12,
+      skipped: [{ reason: "not_relevant", count: 12, description: "Not related to the instruction" }],
+      skippedUrls: [{ url: "https://x.com/about", reason: "not_relevant", foundOn: "https://x.com" }],
+      skippedUrlsTotal: 12,
+    };
+    const fetchMock = sequenceFetch(jsonResponse(200, { status: "success", report }));
+    const client = makeClient(fetchMock);
+    const res = await client.crawlReport("c1", { reason: "not_relevant", limit: 50, offset: 10 });
+    expect(res.report?.skippedUrls[0].foundOn).toBe("https://x.com");
+    expect(fetchMock.mock.calls[0][0]).toBe("https://api.test/crawl/c1/report?reason=not_relevant&limit=50&offset=10");
+  });
+
+  it("crawlReport() returns a null report when none exists", async () => {
+    const fetchMock = sequenceFetch(jsonResponse(200, { status: "success", report: null, message: "No report is available for this crawl." }));
+    const client = makeClient(fetchMock);
+    const res = await client.crawlReport("c1");
+    expect(res.report).toBeNull();
+    expect(fetchMock.mock.calls[0][0]).toBe("https://api.test/crawl/c1/report");
+  });
+
+  it("crawl() sends respectRobots and useSitemap", async () => {
+    const fetchMock = sequenceFetch(jsonResponse(200, { status: "queued", jobId: "c1" }));
+    const client = makeClient(fetchMock);
+    await client.startCrawl({ baseUrl: "https://x.com", crawlInstruction: "all", respectRobots: true, useSitemap: false });
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.respectRobots).toBe(true);
+    expect(body.useSitemap).toBe(false);
+  });
+});
+
+describe("map", () => {
+  it("map() posts to /map and returns links in the same request", async () => {
+    const fetchMock = sequenceFetch(
+      jsonResponse(200, {
+        status: "success",
+        links: [{ url: "https://x.com/pricing", title: "Pricing" }],
+        total: 1,
+        scanned: 40,
+        sources: { sitemap: 30, pages: 10 },
+        creditsUsed: 1,
+        durationMs: 900,
+      })
+    );
+    const client = makeClient(fetchMock);
+    const res = await client.map({ url: "https://x.com", search: "pricing", limit: 10 });
+    expect(res.links[0].title).toBe("Pricing");
+    expect(res.scanned).toBe(40);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://api.test/map");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body as string)).toEqual({ url: "https://x.com", search: "pricing", limit: 10 });
+  });
 });
 
 describe("batchScrape", () => {
