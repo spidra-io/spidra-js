@@ -98,3 +98,14 @@ export type {
   SearchJobFailed,
   SearchJobResponse,
 } from "./types/search.js";
+export type {
+  ParseMode,
+  ParseInput,
+  ParseOptions,
+  ParsedPage,
+  ParseJob,
+  ParseEstimate,
+  ParseBatch,
+  ParseBatchStarted,
+  PreparedUpload,
+} from "./types/parse.js";

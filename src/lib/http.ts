@@ -34,6 +34,8 @@ interface ApiErrorBody {
   retry_after?: number;
 }
 
+const isFormData = (body: unknown): boolean => typeof FormData !== "undefined" && body instanceof FormData;
+
 export class HttpClient {
   private apiKey: string;
   private baseUrl: string;
@@ -86,9 +88,10 @@ export class HttpClient {
           method,
           headers: {
             Authorization: `Bearer ${this.apiKey}`,
-            ...(body !== undefined && { "Content-Type": "application/json" }),
+            // FormData sets its own multipart Content-Type with the boundary.
+            ...(body !== undefined && !isFormData(body) && { "Content-Type": "application/json" }),
           },
-          ...(body !== undefined && { body: JSON.stringify(body) }),
+          ...(body !== undefined && { body: isFormData(body) ? (body as FormData) : JSON.stringify(body) }),
         });
       } catch (err) {
         // Network failure. For POST the request may have reached the server

@@ -59,6 +59,7 @@ console.log(result.content);
     - [Manual job control](#manual-job-control-1)
     - [Poll options](#poll-options)
   - [Batch scraping](#batch-scraping)
+  - [Parsing documents](#parsing-documents)
   - [Crawling](#crawling)
     - [Why a page was skipped](#why-a-page-was-skipped)
   - [Mapping a site](#mapping-a-site)
@@ -573,6 +574,48 @@ for (const job of jobs) {
   console.log(job.uuid, job.status, `${job.completedCount}/${job.totalUrls}`);
 }
 ```
+
+## Parsing documents
+
+`parse()` turns a document into Markdown, page by page: PDF, Word, Excel, PowerPoint, OpenDocument, RTF, EPUB, CSV and HTML. Send the file's bytes, a link, or a `fileId` from an earlier upload. Scanned pages are read with AI; pages with their own text aren't. It costs 1 credit per page parsed, plus AI tokens when you extract with a prompt or schema. Failed pages are free.
+
+```typescript
+import { readFile } from "node:fs/promises";
+
+const doc = await spidra.parse(
+  { file: await readFile("report.pdf"), fileName: "report.pdf" },
+  { pages: "1-10", includePages: true }
+);
+
+console.log(doc.markdown);
+for (const page of doc.pages ?? []) console.log(page.pageNumber, page.method); // "text" or "ocr"
+```
+
+Extract fields as JSON from a link:
+
+```typescript
+const invoice = await spidra.parse(
+  { url: "https://example.com/invoice.pdf" },
+  { prompt: "Invoice number, total and due date" }
+);
+console.log(invoice.json);
+```
+
+| Option | Description |
+|--------|-------------|
+| `mode` | `"auto"` (default) uses AI only for scanned pages, `"fast"` never uses AI, `"ocr"` uses AI on every page. |
+| `pages` | PDF pages to parse, like `"1-5, 9"` or `"10-"`. |
+| `maxPages` | Parse at most this many pages. |
+| `includePages` | Return per-page Markdown in `pages`. |
+| `pageMarkers` | Put `<!-- page N -->` between pages in `markdown`. |
+| `prompt` / `schema` | Extract fields; the result is in `json`. |
+
+Short documents answer in the same request; longer ones are polled until they finish, so `parse()` always returns the result. A document that can't be parsed throws `SpidraJobError`.
+
+- `estimateParse(input, options)` returns the pages and credits without parsing or charging, and a `fileId` you can parse for 24 hours.
+- `parseBatch(inputs, options)` parses several files, links and fileIds together.
+- `uploadForParse(bytes, fileName)` uploads files up to 500 MB (direct uploads take up to 50 MB) and returns a `fileId`.
+- `startParse()` / `getParse()` submit and check a job yourself; `deleteParseFile(fileId)` deletes an upload straight away.
 
 ## Crawling
 

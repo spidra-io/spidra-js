@@ -3,6 +3,8 @@ import { ScrapeResource } from "./resources/scrape.js";
 import { BatchResource } from "./resources/batch.js";
 import { BulkResource } from "./resources/bulk.js";
 import { CrawlResource } from "./resources/crawl.js";
+import { ParseResource } from "./resources/parse.js";
+import type { ParseBatch, ParseEstimate, ParseInput, ParseJob, ParseOptions } from "./types/parse.js";
 import { LogsResource } from "./resources/logs.js";
 import { UsageResource } from "./resources/usage.js";
 import { SearchResource } from "./resources/search.js";
@@ -60,6 +62,7 @@ export class SpidraClient {
   private logsResource: LogsResource;
   private usageResource: UsageResource;
   private searchResource: SearchResource;
+  private parseResource: ParseResource;
 
   constructor(config: SpidraConfig) {
     const http = new HttpClient(config);
@@ -70,6 +73,52 @@ export class SpidraClient {
     this.logsResource = new LogsResource(http);
     this.usageResource = new UsageResource(http);
     this.searchResource = new SearchResource(http);
+    this.parseResource = new ParseResource(http, config.fetch ?? globalThis.fetch);
+  }
+
+  // ---- Parse -----------------------------------------------------------
+
+  /**
+   * Parse a document (a file's bytes, a link, or a fileId) into Markdown, and optionally extract JSON with a prompt
+   * or schema. Waits for the result. 1 credit per page.
+   *
+   * ```ts
+   * const doc = await spidra.parse({ file: await readFile("report.pdf"), fileName: "report.pdf" }, { pages: "1-10" });
+   * console.log(doc.markdown);
+   * ```
+   */
+  parse<T = unknown>(input: ParseInput, options?: ParseOptions, pollOptions?: PollOptions): Promise<ParseJob<T>> {
+    return this.parseResource.run<T>(input, options, pollOptions);
+  }
+
+  /** Queue a document to parse and return at once with its jobId. */
+  startParse<T = unknown>(input: ParseInput, options?: ParseOptions): Promise<ParseJob<T>> {
+    return this.parseResource.start<T>(input, options);
+  }
+
+  /** A parse job's status, and its result once completed. */
+  getParse<T = unknown>(jobId: string, opts?: { includePages?: boolean }): Promise<ParseJob<T>> {
+    return this.parseResource.get<T>(jobId, opts);
+  }
+
+  /** Pages and cost of a document, without parsing it or charging. */
+  estimateParse(input: ParseInput, options?: ParseOptions): Promise<ParseEstimate> {
+    return this.parseResource.estimate(input, options);
+  }
+
+  /** Parse several documents and wait for all of them. */
+  parseBatch<T = unknown>(inputs: ParseInput[], options?: ParseOptions, pollOptions?: PollOptions): Promise<ParseBatch<T>> {
+    return this.parseResource.runBatch<T>(inputs, options, pollOptions);
+  }
+
+  /** Upload a large file (up to 500 MB) and get a fileId to parse. */
+  uploadForParse(file: Blob | Uint8Array | ArrayBuffer, fileName: string): Promise<{ fileId: string }> {
+    return this.parseResource.upload(file, fileName);
+  }
+
+  /** Delete an uploaded file now instead of after 24 hours. */
+  deleteParseFile(fileId: string): Promise<{ status: "deleted"; fileId: string }> {
+    return this.parseResource.deleteFile(fileId);
   }
 
   // ---- Scrape ----------------------------------------------------------
