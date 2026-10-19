@@ -189,6 +189,8 @@ const result = await spidra.search({
 result.data.web?.[0].markdown; // the scraped page's content, right there on the result
 ```
 
+`markdown` is the clean page content. When a page was read by one of Spidra's site scrapers (Amazon, LinkedIn, Google Maps and others), the result also has a `structuredData` object with the page's fields.
+
 This makes the search take as long as its slowest scraped page, not the usual few seconds. Real scraping isn't instant, and Spidra would rather you wait once on one job than build your own polling loop around N separate scrape jobs.
 
 `maxResults` caps how many of the top-ranked web results get scraped; omit it to scrape all of them, up to a cap of 10. A result that fails to scrape or falls outside the time budget is simply left without `markdown`, not treated as an error.
@@ -224,6 +226,19 @@ const result = await spidra.scrape({
 console.log(result.content);
 // { plans: [{ name: "Starter", price: "$9/mo", features: [...] }, ...] }
 ```
+
+`output` is `"markdown"` (the default) or `"json"`, and `scrapeMode` is `"default"` (a real browser) or `"fast"` (a plain HTTP fetch). Any other value is rejected.
+
+Each entry in `result.data` describes one URL, in the order you sent them:
+
+- `url` is exactly the URL you sent. `canonicalUrl` appears when a site scraper used a cleaned link (tracking parameters removed, short link resolved).
+- `markdownContent` is the page as readable markdown.
+- `structuredData` is an object with the page's fields, present when the URL was handled by one of Spidra's site scrapers (Amazon, LinkedIn, Google Maps and others). The markdown does not include this data, so read it here.
+- `warnings` lists anything you asked for that was not done, such as `"deliveryZip was not applied to this page."`
+
+With `output: "json"` and no prompt or schema, a site scraper URL returns its `structuredData` as is, with no AI involved. Other URLs go through the default AI extraction. With several URLs, `result.content` is an array in request order.
+
+`fullPageScreenshot: true` captures the whole page and implies a screenshot, so you don't need to send `screenshot: true` as well.
 
 ### Structured output with JSON schema
 
@@ -543,6 +558,8 @@ for (const item of batch.items) {
 
 Item statuses: `pending`, `running`, `completed`, `failed`.
 
+Batch `output` defaults to `"markdown"`, and passing a `schema` forces `"json"`. When a URL was handled by one of Spidra's site scrapers, its item also has a `structuredData` object.
+
 If some URLs fail (a site was down, a page timed out), you don't have to resubmit the whole batch. Re-queue just the failed items:
 
 ```typescript
@@ -557,6 +574,8 @@ if (result.failedCount > 0) {
   await spidra.retryBatchScrape(batchId);
 }
 ```
+
+A retry keeps every option from the original batch. Cookies are never stored, so if the batch used them, pass them again with `retryBatchScrape(batchId, { cookies })`. Without them the retried URLs run logged out, and the response includes `warnings` saying so.
 
 Cancelling stops everything still pending and refunds the credits for it:
 

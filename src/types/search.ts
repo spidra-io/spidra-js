@@ -89,6 +89,8 @@ export interface SearchResultItem {
   doi?: string;
   /** web results only, present when `scrapeOptions` was requested and enrichment succeeded before the job's budget ran out */
   markdown?: string;
+  /** web results only, present with `markdown` when the page came from one of Spidra's site scrapers */
+  structuredData?: Record<string, unknown>;
 }
 
 export interface SearchExtras {

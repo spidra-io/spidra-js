@@ -72,6 +72,7 @@ export interface ScrapeParams<S extends SchemaInput = SchemaInput> {
   scrapeMode?: "fast" | "default";
   extractContentOnly?: boolean;
   screenshot?: boolean;
+  /** Capture the full scrollable page. Implies a screenshot, so `screenshot: true` is not needed as well. */
   fullPageScreenshot?: boolean;
   cookies?: string;
 }
@@ -95,6 +96,12 @@ export interface ScrapeUrlResult {
   screenshotUrl?: string | null;
   /** Heuristic warning, not a hard failure: the cleaned content came back under ~200 characters, more likely a bot check, cookie wall, or dead redirect than the real page. */
   lowContent?: boolean;
+  /** The page's fields as an object, present when the URL was handled by one of Spidra's site scrapers (Amazon, LinkedIn, Google Maps and others). Markdown output does not include this data; read it here. */
+  structuredData?: Record<string, unknown>;
+  /** The cleaned link a site scraper actually used (tracking parameters removed, short link resolved), present only when it differs from `url`. `url` is always the URL you sent. */
+  canonicalUrl?: string;
+  /** Things you asked for that were not done for this URL, e.g. `"deliveryZip was not applied to this page."` */
+  warnings?: string[];
 }
 
 export interface ScrapeResult<T = unknown> {

@@ -43,6 +43,8 @@ export type {
   BatchStatus,
   BatchCancelResponse,
   BatchListParams,
+  BatchRetryParams,
+  BatchRetryResponse,
   BatchListEntry,
   BatchListResponse,
 } from "./types/batch.js";

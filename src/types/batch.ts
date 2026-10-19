@@ -5,6 +5,7 @@ export interface BatchScrapeParams<S extends SchemaInput = SchemaInput> {
   urls: string[];
   /** Optional when `schema` is provided — a schema-only extraction needs no natural-language prompt. */
   prompt?: string;
+  /** Defaults to `"markdown"`. Passing a `schema` forces `"json"`. */
   output?: OutputFormat;
   /** JSON Schema object — or a Zod v4 schema, converted automatically. */
   schema?: S;
@@ -14,6 +15,7 @@ export interface BatchScrapeParams<S extends SchemaInput = SchemaInput> {
   scrapeMode?: "fast" | "default";
   extractContentOnly?: boolean;
   screenshot?: boolean;
+  /** Capture the full scrollable page. Implies a screenshot, so `screenshot: true` is not needed as well. */
   fullPageScreenshot?: boolean;
   cookies?: string;
 }
@@ -39,6 +41,20 @@ export interface BatchItem<T = unknown> {
   startedAt: string | null;
   finishedAt: string | null;
   screenshotUrl: string | null;
+  /** The page's fields as an object, present when the URL was handled by one of Spidra's site scrapers. */
+  structuredData?: Record<string, unknown>;
+}
+
+export interface BatchRetryParams {
+  /** Cookies to send with the retried URLs. Cookies are never stored, so a batch that used cookies needs them again here to stay signed in. */
+  cookies?: string;
+}
+
+export interface BatchRetryResponse {
+  status?: "queued";
+  retriedCount: number;
+  /** Present when, for example, the batch used cookies and the retry sent none, so the retried URLs run logged out. */
+  warnings?: string[];
 }
 
 export type BatchStatus = "pending" | "running" | "completed" | "failed" | "cancelled";

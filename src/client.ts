@@ -24,6 +24,8 @@ import type {
   BatchScrapeResponse,
   BatchCancelResponse,
   BatchListParams,
+  BatchRetryParams,
+  BatchRetryResponse,
   BatchListResponse,
 } from "./types/batch.js";
 import type {
@@ -182,8 +184,8 @@ export class SpidraClient {
   }
 
   /** Retry failed items in a batch. */
-  retryBatchScrape(batchId: string): Promise<{ retriedCount: number }> {
-    return this.batchResource.retry(batchId);
+  retryBatchScrape(batchId: string, params?: BatchRetryParams): Promise<BatchRetryResponse> {
+    return this.batchResource.retry(batchId, params);
   }
 
   /** List past batch scrape jobs, newest first. */

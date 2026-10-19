@@ -8,6 +8,8 @@ import type {
   BatchScrapeResponse,
   BatchCancelResponse,
   BatchListParams,
+  BatchRetryParams,
+  BatchRetryResponse,
   BatchListResponse,
 } from "../types/batch.js";
 
@@ -33,11 +35,11 @@ export class BatchResource {
     return this.http.get<BatchScrapeResponse<T>>(`/batch/scrape/${batchId}`);
   }
 
-  /** Retry failed items in a batch. */
-  retry(batchId: string): Promise<{ retriedCount: number }> {
-    return this.http.post<{ retriedCount: number }>(
+  /** Retry failed items in a batch. Every original option is kept; pass `cookies` again if the batch used them. */
+  retry(batchId: string, params: BatchRetryParams = {}): Promise<BatchRetryResponse> {
+    return this.http.post<BatchRetryResponse>(
       `/batch/scrape/${batchId}/retry`,
-      {}
+      params
     );
   }
 
