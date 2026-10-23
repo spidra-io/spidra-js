@@ -10,61 +10,277 @@ export type ProxyCountry =
   | "tw" | "ua" | "vn" | "eu" | "global"
   | (string & {}); // allow unlisted codes without losing autocomplete
 
+/**
+ * Every browser action type. The API also accepts these in any case ("Click", "waitfor") and a few aliases
+ * ("fill" for type, "waitForSelector" for waitFor), which you can send through {@link GenericBrowserAction}.
+ */
 export type BrowserActionType =
   | "click"
   | "type"
   | "check"
   | "uncheck"
+  | "hover"
+  | "select"
+  | "press"
   | "wait"
+  | "waitFor"
   | "scroll"
+  | "scrollUntilEnd"
+  | "evaluate"
+  | "screenshot"
   | "forEach";
 
-export interface BrowserAction {
-  type: BrowserActionType;
-  selector?: string;
+/** Fields every action (except forEach) accepts. */
+interface ActionOptions {
+  /**
+   * `true`: if this step fails, it is skipped and reported as `"skipped"` in `actionResults`, and the rest run.
+   * By default a failed step fails the whole job (failed jobs are free) with
+   * `Action N (type "target") failed: <reason>`.
+   */
+  optional?: boolean;
+  /** How long to look for the element, in milliseconds (100 to 30000, default 10000). */
+  timeout?: number;
+}
+
+/**
+ * The element to act on: a CSS selector (`"#login"`), an XPath (`"//button[1]"`) or a plain-English description
+ * (`"the Sign in button"`). A description is found on the page once and then used like a selector.
+ */
+type Target = string;
+
+/** Click an element. */
+export interface ClickAction extends ActionOptions {
+  type: "click";
+  selector: Target;
+}
+
+/** Fill a text field. Without `selector`, the first visible text field on the page is used. */
+export interface TypeAction extends ActionOptions {
+  type: "type";
+  selector?: Target;
+  /** The text to type. */
   value?: string;
-  /** Milliseconds to wait — used by the `wait` action */
-  duration?: number;
-  /** Scroll destination as a percentage 0–100 e.g. `"80%"` — used by the `scroll` action */
-  to?: string;
-  // forEach-specific fields
-  /** Natural language description of which elements to find e.g. `"Find all product cards"` */
-  observe?: string;
-  /** How to interact with each element (default: `"click"`) */
+  /** Same as `value`. */
+  text?: string;
+}
+
+/** Tick a checkbox. */
+export interface CheckAction extends ActionOptions {
+  type: "check";
+  selector: Target;
+}
+
+/** Untick a checkbox. */
+export interface UncheckAction extends ActionOptions {
+  type: "uncheck";
+  selector: Target;
+}
+
+/** Move the mouse over an element, for example to open a menu. */
+export interface HoverAction extends ActionOptions {
+  type: "hover";
+  selector: Target;
+}
+
+/** Choose an option in a dropdown (a `<select>` or a custom one), by its label or value. */
+export interface SelectAction extends ActionOptions {
+  type: "select";
+  selector: Target;
+  /** The option to choose, or several for a multi-select (20 at most). */
+  value?: string | string[];
+  /** Same as `value`. */
+  option?: string | string[];
+}
+
+/** Press a key, on an element or on the page. */
+export interface PressAction extends ActionOptions {
+  type: "press";
+  /** A key name such as `"Enter"`, `"Tab"`, `"Escape"`, `"ArrowDown"` or `"Control+A"`. */
+  key: string;
+  /** The element to press it on. Without one, the key goes to the page. */
+  selector?: Target;
+}
+
+/** Pause for a fixed time. */
+export interface WaitAction {
+  type: "wait";
+  /** Milliseconds to wait (1 to 30000). */
+  duration: number;
+  optional?: boolean;
+}
+
+/** Wait until an element reaches a state. */
+export interface WaitForAction extends ActionOptions {
+  type: "waitFor";
+  selector: Target;
+  /** Default `"visible"`. */
+  state?: "visible" | "attached" | "hidden" | "detached";
+}
+
+/**
+ * Scroll the page. Set `to` (a percentage of the page height such as `80` or `"80%"`, `"top"`, `"bottom"`, or an
+ * element to scroll into view) or `pixels` (scroll by that amount; negative scrolls up).
+ */
+export interface ScrollAction extends ActionOptions {
+  type: "scroll";
+  to?: number | string;
+  pixels?: number;
+}
+
+/** Keep scrolling (or clicking a "load more" button) until the page stops growing. */
+export interface ScrollUntilEndAction extends ActionOptions {
+  type: "scrollUntilEnd";
+  /** Most rounds to run (1 to 30, default 10). */
+  maxScrolls?: number;
+  /** Milliseconds to wait after each round (200 to 5000, default 1500). */
+  pause?: number;
+  /** A "load more" button to click each round instead of scrolling, while it is visible. */
+  clickSelector?: Target;
+}
+
+/**
+ * Run JavaScript in the page. An expression (`"document.title"`) is returned as is; statements need `return`.
+ * The value comes back as `result` in this step's entry of `actionResults` (cut at 10,000 characters).
+ */
+export interface EvaluateAction extends ActionOptions {
+  type: "evaluate";
+  /** The code to run (10,000 characters at most). */
+  script: string;
+}
+
+/** Take a screenshot at this point. Its link comes back as `screenshotUrl` in `actionResults`. */
+export interface ScreenshotAction extends ActionOptions {
+  type: "screenshot";
+  /** Capture the whole scrollable page instead of the viewport. */
+  fullPage?: boolean;
+}
+
+/** The actions a forEach can run on each item: any action except another forEach, 10 at most. */
+export type ForEachItemAction = Exclude<BrowserAction, ForEachAction>;
+
+/**
+ * Go through a set of elements and capture each one. It must be the only forEach and the last action, since it
+ * collects the results.
+ */
+export interface ForEachAction {
+  type: "forEach";
+  /** Which elements to go through, in plain English, e.g. `"each product card"`. */
+  observe: string;
+  /**
+   * `"click"` (default) clicks each item and captures what appears (a modal or expanded section), `"inline"` reads
+   * each item where it is, `"navigate"` opens each item's link and captures that page.
+   */
   mode?: "click" | "inline" | "navigate";
-  /** CSS selector of the content container to capture after each interaction */
+  /** What to capture for each item: a CSS selector, XPath or description. Without it, the whole page or item. */
   captureSelector?: string;
-  /** Maximum number of elements to process (default: 50, hard cap: 50) */
+  /** Most items to process across all pages (1 to 50, default 50). */
   maxItems?: number;
-  /** Milliseconds to wait after clicking/navigating before capturing content (default: 2500) */
+  /** Milliseconds to wait after clicking or opening an item before capturing it (0 to 10000, default 2500). */
   waitAfterClick?: number;
-  /** Per-element extraction prompt — runs AI on each item individually before combining */
+  /** An extraction prompt run on each item on its own, before the top-level `prompt` sees them all. */
   itemPrompt?: string;
-  /** Per-element actions to run after click/navigation */
-  actions?: BrowserAction[];
-  /** Paginate through "next page" links to collect more elements */
+  /** Actions to run on each item after it is clicked or opened (10 at most, no forEach). */
+  actions?: ForEachItemAction[];
+  /** Move to the next results page after the items on the current one. */
   pagination?: {
-    /** CSS selector or description of the "next page" button/link */
+    /** The next-page button or link: a CSS selector, XPath or description. */
     nextSelector: string;
-    /** Maximum number of pages to paginate through (default: 5, hard cap: 10) */
+    /** Pages to go through in total, counting the first (1 to 10, default 5). */
     maxPages?: number;
   };
 }
 
+/**
+ * One browser action. Actions run in order before the page is captured. Use {@link GenericBrowserAction} for
+ * actions built at runtime.
+ */
+export type BrowserAction =
+  | ClickAction
+  | TypeAction
+  | CheckAction
+  | UncheckAction
+  | HoverAction
+  | SelectAction
+  | PressAction
+  | WaitAction
+  | WaitForAction
+  | ScrollAction
+  | ScrollUntilEndAction
+  | EvaluateAction
+  | ScreenshotAction
+  | ForEachAction;
+
+/**
+ * Any action as a plain object, with every field optional: for actions built at runtime (from config or user input),
+ * for type names in another case or an alias, and for code written against SDK 0.8 and earlier. The API checks it
+ * and answers 422 naming the action and the problem.
+ */
+export interface GenericBrowserAction {
+  type: BrowserActionType | (string & {});
+  selector?: string;
+  /** Text to type, option to select, or key to press. Older code also used it for the target or the wait time. */
+  value?: string | number | string[];
+  text?: string;
+  key?: string;
+  option?: string | string[];
+  timeout?: number;
+  optional?: boolean;
+  duration?: number;
+  state?: "visible" | "attached" | "hidden" | "detached";
+  to?: number | string;
+  pixels?: number;
+  maxScrolls?: number;
+  pause?: number;
+  clickSelector?: string;
+  script?: string;
+  fullPage?: boolean;
+  observe?: string;
+  mode?: "click" | "inline" | "navigate";
+  captureSelector?: string;
+  maxItems?: number;
+  waitAfterClick?: number;
+  itemPrompt?: string;
+  actions?: Array<BrowserAction | GenericBrowserAction>;
+  pagination?: { nextSelector: string; maxPages?: number };
+}
+
+/** How one action went. `index` is its position in `actions`, from 1. */
+export interface ActionResult {
+  index: number;
+  /** The action's type, in its canonical name (`"waitFor"` for `"waitForSelector"`). */
+  type: Exclude<BrowserActionType, "forEach"> | (string & {});
+  /** `"skipped"` is an optional step that failed; `"failed"` is a step that failed the job. */
+  status: "ok" | "skipped" | "failed";
+  durationMs: number;
+  /** Why the step failed or was skipped. */
+  error?: string;
+  /** evaluate: what the script returned. scrollUntilEnd: `{ scrolls, stoppedBecause: "end" | "maxScrolls" }`. */
+  result?: unknown;
+  /** screenshot: a link to the image. */
+  screenshotUrl?: string;
+}
+
 export interface ScrapeUrl {
   url: string;
-  /** Step-by-step browser actions to run before extraction */
-  actions?: BrowserAction[];
-  /** AI Navigate mode — a single natural language instruction that handles all interactions automatically. */
+  /**
+   * Browser actions to run in order before the page is captured (50 at most, 60 seconds of waiting in total).
+   * Can't be combined with `instruction`.
+   */
+  actions?: Array<BrowserAction | GenericBrowserAction>;
+  /**
+   * One plain-English task for the browser to carry out before the page is captured, such as
+   * `"search for wireless headphones and open the first result"` (2000 characters at most). Always runs in a
+   * browser. Can't be combined with `actions`.
+   */
   instruction?: string;
 }
 
 export interface ScrapeParams<S extends SchemaInput = SchemaInput> {
   urls: ScrapeUrl[];
-  /** Optional when `schema` is provided — a schema-only extraction needs no natural-language prompt. */
+  /** Optional when `schema` is provided: a schema-only extraction needs no natural-language prompt. */
   prompt?: string;
   output?: OutputFormat;
-  /** JSON Schema object — or a Zod v4 schema, converted automatically. */
+  /** JSON Schema object, or a Zod v4 schema, converted automatically. */
   schema?: S;
   useProxy?: boolean;
   proxyCountry?: ProxyCountry;
@@ -100,8 +316,12 @@ export interface ScrapeUrlResult {
   structuredData?: Record<string, unknown>;
   /** The cleaned link a site scraper actually used (tracking parameters removed, short link resolved), present only when it differs from `url`. `url` is always the URL you sent. */
   canonicalUrl?: string;
-  /** Things you asked for that were not done for this URL, e.g. `"deliveryZip was not applied to this page."` */
+  /** Things you asked for that were not done for this URL, e.g. `"deliveryZip was not applied to this page."`, a skipped optional action or a forEach that fell back to the whole page. */
   warnings?: string[];
+  /** One entry per browser action, in order, present when the URL had actions. */
+  actionResults?: ActionResult[];
+  /** forEach: how many items were captured. */
+  forEachItems?: number;
 }
 
 export interface ScrapeResult<T = unknown> {
@@ -111,6 +331,8 @@ export interface ScrapeResult<T = unknown> {
   ai_extraction_failed: boolean;
   /** True when AI ran successfully but returned structurally empty data (e.g. `{"rooms":[]}`), only set when a prompt or schema was used. */
   extraction_empty?: boolean;
+  /** Everything worth knowing that didn't fail the job, across all URLs: skipped optional actions, a forEach that fell back or stopped early, credits that ran short. With several URLs, each line starts with its URL. */
+  warnings?: string[];
   stats: {
     durationMs: number;
     captchaSolvedCount: number;

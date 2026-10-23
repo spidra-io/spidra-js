@@ -49,6 +49,8 @@ console.log(result.content);
     - [Geo-targeted scraping](#geo-targeted-scraping)
     - [Authenticated pages](#authenticated-pages)
     - [Browser actions](#browser-actions)
+      - [When a step fails](#when-a-step-fails)
+      - [Action results](#action-results)
     - [forEach: process every element on a page](#foreach-process-every-element-on-a-page)
       - [inline mode](#inline-mode)
       - [navigate mode](#navigate-mode)
@@ -235,6 +237,7 @@ Each entry in `result.data` describes one URL, in the order you sent them:
 - `markdownContent` is the page as readable markdown.
 - `structuredData` is an object with the page's fields, present when the URL was handled by one of Spidra's site scrapers (Amazon, LinkedIn, Google Maps and others). The markdown does not include this data, so read it here.
 - `warnings` lists anything you asked for that was not done, such as `"deliveryZip was not applied to this page."`
+- `actionResults` reports each browser action, when the URL had any (see [Action results](#action-results)).
 
 With `output: "json"` and no prompt or schema, a site scraper URL returns its `structuredData` as is, with no AI involved. Other URLs go through the default AI extraction. With several URLs, `result.content` is an array in request order.
 
@@ -323,58 +326,108 @@ const result = await spidra.scrape({
 
 ### Browser actions
 
-Actions let you interact with the page before the scrape runs. They execute in order, and the scrape happens after all actions complete.
+Actions work with the page before it is captured: fill in a form, accept a cookie banner, open a menu, pick from a dropdown, scroll, or go through a list. They run in order, and the page is captured after the last one.
 
 ```typescript
 const result = await spidra.scrape({
   urls: [
     {
-      url: "https://spidra.io/products",
+      url: "https://quotes.toscrape.com/login",
       actions: [
-        { type: "click", selector: "#accept-cookies" },
-        { type: "wait",  duration: 1000 },
-        { type: "scroll", to: "80%" },
+        { type: "type",    selector: "#username", value: "demo" },
+        { type: "type",    selector: "#password", value: "demo" },
+        { type: "click",   selector: "input[type='submit']" },
+        { type: "waitFor", selector: "a[href='/logout']" },
       ],
     },
   ],
-  prompt: "Extract all product names and prices",
+  prompt: "List the first 3 quotes with their authors",
+  output: "json",
 });
 ```
 
 **Available actions:**
 
-| Action | Required fields | Description |
-|--------|----------------|-------------|
-| `click` | `selector` or `value` | Click a button, link, or any element |
-| `type` | `selector`, `value` | Type text into an input or textarea |
-| `check` | `selector` or `value` | Check a checkbox |
-| `uncheck` | `selector` or `value` | Uncheck a checkbox |
-| `wait` | `duration` (ms) | Pause execution for a set number of milliseconds |
-| `scroll` | `to` (0-100%) | Scroll the page to a percentage of its height |
-| `forEach` | `observe` | Loop over every matched element and process each one |
+| Action | Fields | What it does |
+|--------|--------|--------------|
+| `click` | `selector` | Click an element |
+| `type` | `selector`, `value` (or `text`) | Fill a text field. Without `selector`, the first visible field |
+| `check` / `uncheck` | `selector` | Tick or untick a checkbox |
+| `hover` | `selector` | Move the mouse over an element, for example to open a menu |
+| `select` | `selector`, `value` (or `option`) | Choose a dropdown option by its label or value. An array picks several |
+| `press` | `key`, optional `selector` | Press a key such as `"Enter"`, `"Tab"`, `"Escape"` or `"Control+A"` |
+| `wait` | `duration` | Pause for 1 to 30000 ms |
+| `waitFor` | `selector`, optional `state` | Wait until an element is `"visible"` (default), `"attached"`, `"hidden"` or `"detached"` |
+| `scroll` | `to` or `pixels` | Scroll to a percentage (`80` or `"80%"`), `"top"`, `"bottom"` or an element, or by a number of pixels |
+| `scrollUntilEnd` | optional `maxScrolls`, `pause`, `clickSelector` | Keep scrolling (or clicking a "load more" button) until the page stops growing |
+| `evaluate` | `script` | Run JavaScript in the page and return its value |
+| `screenshot` | optional `fullPage` | Take a screenshot at this step |
+| `forEach` | `observe` | Go through a set of elements and capture each one (see below) |
 
-For `selector`, use a CSS selector or XPath. For `value`, use a plain English description and Spidra will locate the element using AI.
+Type names are case-insensitive. `selector` takes a CSS selector, an XPath, or a plain-English description such as `"the Sign in button"`, which Spidra finds on the page for you. Every action except `forEach` also takes `timeout` (how long to look for the element, 100 to 30000 ms, default 10000) and `optional`.
 
 ```typescript
-// CSS selector
-{ type: "click", selector: "button[data-testid='submit']" }
-
-// Plain English
-{ type: "click", value: "Accept all cookies button" }
-
-// Type into a field
-{ type: "type", selector: "input[name='q']", value: "wireless headphones" }
-
-// Wait for content to load
-{ type: "wait", duration: 2000 }
-
-// Scroll to bottom
-{ type: "scroll", to: "100%" }
+{ type: "click",  selector: "button[data-testid='submit']" }        // CSS
+{ type: "click",  selector: "the Next page link" }                  // plain English
+{ type: "select", selector: "#dropdown", value: "Option 2" }
+{ type: "press",  selector: "#search", key: "Enter" }
+{ type: "waitFor", selector: "#finish", timeout: 15000 }
+{ type: "scroll", to: "bottom" }
+{ type: "scrollUntilEnd", maxScrolls: 5, clickSelector: "the Load more button" }
+{ type: "evaluate", script: "document.querySelectorAll('.quote').length" }
+{ type: "screenshot", fullPage: true }
 ```
+
+A URL can have up to 50 actions and 60 seconds of waiting in total (waits, `waitFor` timeouts and `scrollUntilEnd` pauses). A request that breaks a rule gets a 422 naming the action and the problem, before anything runs.
+
+Instead of listing steps, you can give a URL one plain-English `instruction`, such as `"search for wireless headphones and open the first result"`. It always runs in a real browser. A URL takes `instruction` or `actions`, not both.
+
+#### When a step fails
+
+By default a step that can't be done fails the job, and failed jobs are free. `scrape()` throws a `SpidraJobError` whose message names the step and the reason:
+
+```
+Failed to scrape https://quotes.toscrape.com: Action 1 (click "#does-not-exist") failed: no element matches "#does-not-exist" (waited 1 seconds). Add "optional": true to that action to skip it when it can't be done.
+```
+
+Mark a step `optional: true` when it may not be there, like a cookie banner that only shows in some regions. If it fails, it is skipped and the rest run.
+
+#### Action results
+
+Each URL's entry in `result.data` has `actionResults`, one entry per action in order, and `result.warnings` lists anything that didn't go as asked without failing the job:
+
+```typescript
+const result = await spidra.scrape({
+  urls: [
+    {
+      url: "https://quotes.toscrape.com",
+      actions: [
+        { type: "click", selector: "#cookie-banner .accept", optional: true, timeout: 1000 },
+        { type: "evaluate", script: "document.querySelectorAll('.quote').length" },
+        { type: "screenshot" },
+      ],
+    },
+  ],
+});
+
+for (const step of result.data[0].actionResults ?? []) {
+  console.log(step.index, step.type, step.status, step.result ?? step.screenshotUrl ?? step.error ?? "");
+}
+// 1 click skipped no element matches "#cookie-banner .accept" (waited 1 seconds).
+// 2 evaluate ok 10
+// 3 screenshot ok https://...png
+
+console.log(result.warnings);
+// [ 'Action 1 (click) was skipped: no element matches "#cookie-banner .accept" (waited 1 seconds).' ]
+```
+
+`status` is `"ok"`, `"skipped"` (an optional step that failed) or `"failed"`. `evaluate` returns the script's value in `result`, `scrollUntilEnd` returns `{ scrolls, stoppedBecause }`, and `screenshot` returns `screenshotUrl`.
+
+The action types are exported (`BrowserAction` is a union with one member per action type, such as `ClickAction` or `ForEachAction`), so an array typed as `BrowserAction[]` is checked field by field. For actions you build at runtime, use `GenericBrowserAction`, where every field is optional and the API does the checking.
 
 ### forEach: process every element on a page
 
-`forEach` finds a set of elements on the page and processes each one individually. It is the right tool when you need to collect data from a list of items, paginate through multiple pages, or click into each item's detail page.
+`forEach` finds a set of elements on the page and processes each one individually. It is the right tool when you need to collect data from a list of items, paginate through multiple pages, or click into each item's detail page. It must be the last action, and a URL can have only one.
 
 > You don't need `forEach` if the data fits on a single page and is short, a plain `prompt` is simpler and works just as well.
 
@@ -382,6 +435,19 @@ For `selector`, use a CSS selector or XPath. For `value`, use a plain English de
 - The list spans multiple pages and you need `pagination`
 - You need to click into each item's detail page (`navigate` mode)
 - You have 20+ items and want per-item AI extraction to stay consistent (`itemPrompt`)
+
+| Field | What it does |
+|-------|--------------|
+| `observe` | Which elements to go through, in plain English, such as `"each product card"` |
+| `mode` | `"click"` (default), `"inline"` or `"navigate"` |
+| `captureSelector` | What to capture for each item: a CSS selector, XPath or description |
+| `maxItems` | Most items across all pages, 1 to 50 (default 50) |
+| `waitAfterClick` | Milliseconds to wait after clicking or opening an item, 0 to 10000 (default 2500) |
+| `itemPrompt` | An extraction prompt run on each item on its own |
+| `actions` | Actions to run on each item after it is opened, 10 at most and no `forEach` |
+| `pagination` | `{ nextSelector, maxPages }` to move through results pages |
+
+`result.data[0].forEachItems` says how many items were captured. When `observe` finds nothing and the whole page is returned instead, or the loop stops early, `result.warnings` says so.
 
 #### inline mode
 
@@ -453,7 +519,7 @@ After processing all elements on the current page, follow the next-page link and
   maxItems: 40,
   pagination: {
     nextSelector: "li.next > a",
-    maxPages:     3,            // 3 additional pages beyond the first
+    maxPages:     3,            // pages in total, counting the first (1 to 10, default 5)
   },
 }
 ```
@@ -462,7 +528,7 @@ After processing all elements on the current page, follow the next-page link and
 
 #### Per-element actions
 
-Run additional browser actions on each item after navigating or clicking into it, before the content is captured. Useful for scrolling below the fold or expanding collapsed sections.
+Run additional browser actions on each item after navigating or clicking into it, before the content is captured. Useful for scrolling below the fold or expanding collapsed sections. Up to 10 actions, any type except `forEach`.
 
 ```typescript
 {
