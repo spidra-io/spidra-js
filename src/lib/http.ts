@@ -11,7 +11,7 @@ import {
   type RateLimitInfo,
 } from "./errors.js";
 
-type HttpMethod = "GET" | "POST" | "DELETE";
+type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE";
 
 /**
  * Statuses safe to retry per method. GET/DELETE are idempotent so gateway
@@ -23,6 +23,7 @@ const RETRYABLE_STATUSES: Record<HttpMethod, readonly number[]> = {
   GET: [502, 503, 504],
   DELETE: [502, 503, 504],
   POST: [502, 503],
+  PATCH: [502, 503],
 };
 
 const MAX_RETRY_DELAY_MS = 30_000;
@@ -53,6 +54,10 @@ export class HttpClient {
 
   post<T>(path: string, body: unknown): Promise<T> {
     return this.request<T>("POST", path, body);
+  }
+
+  patch<T>(path: string, body: unknown): Promise<T> {
+    return this.request<T>("PATCH", path, body);
   }
 
   get<T>(path: string): Promise<T> {
@@ -94,9 +99,9 @@ export class HttpClient {
           ...(body !== undefined && { body: isFormData(body) ? (body as FormData) : JSON.stringify(body) }),
         });
       } catch (err) {
-        // Network failure. For POST the request may have reached the server
-        // (and queued a job), so never blind-retry it.
-        if (method !== "POST" && attempt < this.maxRetries) {
+        // Network failure. For POST and PATCH the request may have reached the
+        // server (queued a job, or sent confirmation emails), so never blind-retry it.
+        if (method !== "POST" && method !== "PATCH" && attempt < this.maxRetries) {
           await sleep(this.backoffDelay(attempt++));
           continue;
         }

@@ -65,6 +65,9 @@ console.log(result.content);
   - [Crawling](#crawling)
     - [Why a page was skipped](#why-a-page-was-skipped)
   - [Mapping a site](#mapping-a-site)
+  - [Templates](#templates)
+  - [Presets](#presets)
+  - [Monitors](#monitors)
   - [Watching jobs (streaming results)](#watching-jobs-streaming-results)
   - [Logs](#logs)
   - [Usage statistics](#usage-statistics)
@@ -886,6 +889,102 @@ for (const link of links) {
 
 `total` is how many URLs matched, `scanned` how many were found before the search filter. Map is a good first step before a batch scrape: pick the URLs you want, then scrape exactly those.
 
+## Templates
+
+Templates are ready-made jobs for common tasks, such as Google Maps leads, Amazon keyword rank or LinkedIn jobs. You fill in a few inputs and get back one row per result.
+
+```typescript
+// Find a template, then see its inputs
+const { templates } = await spidra.listTemplates({ site: "google-maps" });
+const template = await spidra.getTemplate("google-maps-leads");
+console.log(template.inputs.map((i) => `${i.key}${i.required ? " (required)" : ""}`));
+
+// What a run will cost, without running it (free)
+const { credits } = await spidra.estimateTemplate("google-maps-leads", {
+  inputs: { query: "dentist", areas: ["Ikeja, Lagos"] },
+});
+
+// Run it and wait for the rows
+const run = await spidra.runTemplate("google-maps-leads", {
+  inputs: { query: "dentist", areas: ["Ikeja, Lagos"] },
+});
+console.log(run.status, run.rowCount, run.creditsUsed);
+// completed 20 1
+console.log(run.rows?.[0]);
+```
+
+`runTemplate()` asks the API to wait first, so a quick run often finishes in that one call; longer ones are polled for you. A `partial` run (some pages failed) still returns its rows, with the failed pages in `failures`. A failed run throws `SpidraJobError`.
+
+To manage the run yourself, use `startTemplateRun()` and `getTemplateRun(runId, { rows: false })` while it runs. `listTemplateRuns()` lists past runs, and `lookupAirports({ q: "lagos" })` finds the codes the Google Flights templates take.
+
+## Presets
+
+A preset saves a job so you can run it again with one call. It's either a template with its inputs, or any tool's request body.
+
+```typescript
+// Save a template preset
+const { id } = await spidra.createPreset({
+  kind: "template",
+  name: "Dentists in Lekki",
+  template: "google-maps-leads",
+  inputs: { query: "dentist", areas: ["Lekki, Lagos"] },
+});
+
+// Or a tool preset: the request body for scrape, batch, crawl, map, search or parse
+await spidra.createPreset({
+  kind: "tool",
+  name: "Python docs: asyncio pages",
+  tool: "map",
+  config: { url: "https://docs.python.org/3/", search: "asyncio", limit: 3 },
+});
+
+// Run it, changing inputs for this run only
+const result = await spidra.runPreset(id, { overrides: { areas: ["Ikeja, Lagos"] } });
+```
+
+A template preset returns the template run (`result.run`); poll it with `getTemplateRun()`. A tool preset returns that tool's own response: a map's links straight away, or a scrape or crawl job ID to poll. `cookies` and `wait` are never stored in a preset.
+
+`listPresets()`, `getPreset()`, `updatePreset()` and `deletePreset()` manage them.
+
+## Monitors
+
+A monitor runs a template, a preset or a list of pages on a schedule, compares each check with the last, and alerts you when something changes.
+
+```typescript
+const monitor = {
+  name: "Docs page",
+  sources: [{ kind: "urls" as const, urls: ["https://httpbin.org/uuid"] }],
+  schedule: { every: "1w" as const, day: 1, at: "08:00", timezone: "Africa/Lagos" },
+  alertOn: "page" as const,
+  goal: "Only tell me if the uuid changes",
+  notify: { webhook: { url: "https://example.com/hooks/spidra" } },
+};
+
+// What it will cost (free), then create it
+console.log(await spidra.estimateMonitor(monitor));
+// { creditsPerCheck: 1, checksPerMonth: 5, creditsPerMonth: 5, usesAi: false }
+
+const { monitor: created } = await spidra.createMonitor(monitor);
+```
+
+The first check runs straight away and records the starting point without alerting (send `checkNow: false` to wait for the schedule). Webhooks are signed with `X-Spidra-Signature`; check them with `verifySpidraWebhook()`.
+
+Then:
+
+```typescript
+await spidra.checkMonitorNow(created.id);                 // runs in the background
+const { checks } = await spidra.listMonitorChecks(created.id);
+const check = await spidra.getMonitorCheck(created.id, checks[0].id);
+console.log(check.summary, check.sources?.[0]?.pages);    // what changed
+
+await spidra.pauseMonitor(created.id);
+await spidra.resumeMonitor(created.id);
+await spidra.updateMonitor(created.id, { goal: null });   // send only what changes
+await spidra.deleteMonitor(created.id);
+```
+
+`monitorLimits()` says how many monitors your plan allows and how often they can check. `testMonitorNotification({ notify })` sends a sample alert so you can check a webhook, Slack or Discord URL before saving.
+
 ## Watching jobs (streaming results)
 
 For long-running crawls and batches, `watchCrawl()`/`watchBatch()` give you each result as it lands instead of one snapshot at the end. They poll under the hood but only re-fetch page content when progress actually changes.
@@ -928,16 +1027,16 @@ Events: `snapshot` (every poll), `page`/`item` (each result exactly once, includ
 
 ## Logs
 
-Scrape logs are stored for every job that runs through the API.
+Every run is logged, including ones made in the dashboard, and logs outlast the jobs themselves.
 
 ```typescript
-// List logs with optional filters
+// Scrape logs
 const { logs, total } = await spidra.scrapeLogs({
-  status:     "failed",        // "success" | "failed"
+  status:     "error",         // "success" | "error" | "in_progress"
   searchTerm: "amazon.com",
   channel:    "api",           // "api" | "playground"
-  dateStart:  "2024-01-01",
-  dateEnd:    "2024-12-31",
+  dateStart:  "2026-10-01",
+  dateEnd:    "2026-10-31",
   page:       1,
   limit:      20,
 });
@@ -945,26 +1044,28 @@ const { logs, total } = await spidra.scrapeLogs({
 for (const log of logs) {
   console.log(log.urls[0]?.url, log.status, log.credits_used);
 }
-```
 
-Need the full detail on one job, not just the summary from the list? Fetch it by UUID:
-
-```typescript
+// One log in full, with its result
 const log = await spidra.getScrapeLog("log-uuid");
-console.log(log.result_data); // the full AI output for that job
+console.log(log.result_data);
 ```
+
+Search, map and parse have their own logs with the same filters: `searchLogs()` and `getSearchLog()`, `mapLogs()` and `getMapLog()` (with the links it returned), and `parseLogs()`. A parse log's `jobId` opens the full result with `getParse()`. A log's `uuid` isn't the job's ID.
 
 ## Usage statistics
 
-Returns credit and request usage broken down by day or week.
-
 ```typescript
-// Range options: "7d" | "30d" | "weekly"
+// Plan, credits left this period and proxy bandwidth
+const account = await spidra.account();
+console.log(account.plan.name, account.credits.remaining);
+
+// Credits, requests and tokens per day or week: "7d" | "30d" | "weekly"
 const rows = await spidra.usage("30d");
 
-for (const row of rows) {
-  console.log(row.date, row.requests, row.credits, row.tokens);
-}
+// Credits per day, split by tool: "1d" | "7d" | "30d", or "custom" with dates
+const days = await spidra.usageBreakdown({ range: "7d" });
+console.log(days[0]);
+// { label: "Oct 19", date: "2026-10-19", scrapeCredits: 74, crawlCredits: 0, searchCredits: 0, parseCredits: 0, mapCredits: 0 }
 ```
 
 ## Retries and reliability

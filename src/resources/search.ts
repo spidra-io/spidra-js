@@ -17,6 +17,14 @@ export class SearchResource {
   }
 
   /**
+   * Cancel a search. One that hasn't started is removed; a running one stops at its next checkpoint and then
+   * reports `failed` with "Search cancelled" (`message` says so).
+   */
+  cancel(jobId: string): Promise<{ status: "cancelled"; jobId: string; message?: string }> {
+    return this.http.delete(`/search/${jobId}`);
+  }
+
+  /**
    * Submit a search job and wait for it to complete.
    * Throws `SpidraJobError` if the job fails, and `SpidraTimeoutError` if
    * `options.timeout` is set and exceeded.

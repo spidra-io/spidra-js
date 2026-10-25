@@ -8,6 +8,9 @@ import type { ParseBatch, ParseEstimate, ParseInput, ParseJob, ParseOptions } fr
 import { LogsResource } from "./resources/logs.js";
 import { UsageResource } from "./resources/usage.js";
 import { SearchResource } from "./resources/search.js";
+import { TemplatesResource } from "./resources/templates.js";
+import { PresetsResource } from "./resources/presets.js";
+import { MonitorsResource } from "./resources/monitors.js";
 import { CrawlWatcher, BatchWatcher, type WatchOptions } from "./lib/watcher.js";
 import { poll, type PollOptions } from "./lib/poll.js";
 import type { InferSchemaOutput, SchemaInput } from "./lib/schema.js";
@@ -48,8 +51,62 @@ import type {
 } from "./types/crawl.js";
 import type { SearchParams, SearchResult, SearchJobQueued, SearchJobResponse } from "./types/search.js";
 import type { BulkEstimate, BulkScrapeParams, BulkResult } from "./types/bulk.js";
-import type { ScrapeLogsParams, ScrapeLogsResponse, ScrapeLogDetail } from "./types/logs.js";
-import type { AccountSummary, UsageRange, UsageStatRow } from "./types/usage.js";
+import type {
+  LogListParams,
+  MapLogDetail,
+  MapLogStatus,
+  MapLogsResponse,
+  ParseLogStatus,
+  ParseLogsResponse,
+  ScrapeLogsParams,
+  ScrapeLogsResponse,
+  ScrapeLogDetail,
+  SearchLog,
+  SearchLogStatus,
+  SearchLogsResponse,
+} from "./types/logs.js";
+import type {
+  AccountSummary,
+  UsageBreakdownParams,
+  UsageBreakdownRow,
+  UsageRange,
+  UsageStatRow,
+} from "./types/usage.js";
+import type {
+  Airport,
+  ListTemplateRunsParams,
+  ListTemplateRunsResponse,
+  ListTemplatesParams,
+  ListTemplatesResponse,
+  LookupAirportsParams,
+  RunTemplateParams,
+  TemplateDetail,
+  TemplateEstimate,
+  TemplateRun,
+} from "./types/templates.js";
+import type {
+  CreatePresetParams,
+  ListPresetsParams,
+  ListPresetsResponse,
+  Preset,
+  RunPresetParams,
+  RunPresetResponse,
+  UpdatePresetParams,
+} from "./types/presets.js";
+import type {
+  CreateMonitorParams,
+  ListMonitorChecksParams,
+  ListMonitorChecksResponse,
+  Monitor,
+  MonitorCheck,
+  MonitorEstimate,
+  MonitorLimits,
+  MonitorParams,
+  MonitorWriteResponse,
+  TestNotificationParams,
+  TestNotificationResponse,
+  UpdateMonitorParams,
+} from "./types/monitors.js";
 
 /**
  * The Spidra client. Every method that submits a job comes in three shapes:
@@ -65,6 +122,9 @@ export class SpidraClient {
   private usageResource: UsageResource;
   private searchResource: SearchResource;
   private parseResource: ParseResource;
+  private templatesResource: TemplatesResource;
+  private presetsResource: PresetsResource;
+  private monitorsResource: MonitorsResource;
 
   constructor(config: SpidraConfig) {
     const http = new HttpClient(config);
@@ -76,6 +136,9 @@ export class SpidraClient {
     this.usageResource = new UsageResource(http);
     this.searchResource = new SearchResource(http);
     this.parseResource = new ParseResource(http, config.fetch ?? globalThis.fetch);
+    this.templatesResource = new TemplatesResource(http);
+    this.presetsResource = new PresetsResource(http);
+    this.monitorsResource = new MonitorsResource(http);
   }
 
   // ---- Parse -----------------------------------------------------------
@@ -318,6 +381,157 @@ export class SpidraClient {
     return this.searchResource.get(jobId);
   }
 
+  /** Cancel a search. A running one stops at its next checkpoint and then reports `failed`. */
+  cancelSearch(jobId: string): Promise<{ status: "cancelled"; jobId: string; message?: string }> {
+    return this.searchResource.cancel(jobId);
+  }
+
+  // ---- Templates -------------------------------------------------------
+
+  /** List the ready-made templates, optionally filtered by category, site or words. No credits. */
+  listTemplates(params?: ListTemplatesParams): Promise<ListTemplatesResponse> {
+    return this.templatesResource.list(params);
+  }
+
+  /** Everything needed to run a template: its inputs, columns, limits and sample rows. */
+  getTemplate(slug: string): Promise<TemplateDetail> {
+    return this.templatesResource.get(slug);
+  }
+
+  /** Check a template's inputs and get the credits a run should cost, without running it. Free. */
+  estimateTemplate(slug: string, params: RunTemplateParams): Promise<TemplateEstimate> {
+    return this.templatesResource.estimate(slug, params);
+  }
+
+  /**
+   * Run a template and wait for its rows.
+   *
+   * ```ts
+   * const run = await spidra.runTemplate("google-maps-leads", { inputs: { query: "dentist", areas: ["Lekki, Lagos"] } });
+   * console.log(run.rowCount, run.rows?.[0]);
+   * ```
+   */
+  runTemplate<Row = Record<string, unknown>>(
+    slug: string,
+    params: RunTemplateParams,
+    options?: PollOptions
+  ): Promise<TemplateRun<Row>> {
+    return this.templatesResource.run<Row>(slug, params, options);
+  }
+
+  /** Start a template run and return at once with its runId. With `wait`, a quick run comes back finished. */
+  startTemplateRun(slug: string, params: RunTemplateParams & { wait?: boolean }): Promise<TemplateRun> {
+    return this.templatesResource.start(slug, params);
+  }
+
+  /** A template run's status, and its rows once finished (`rows: false` leaves them out while polling). */
+  getTemplateRun<Row = Record<string, unknown>>(runId: string, opts?: { rows?: boolean }): Promise<TemplateRun<Row>> {
+    return this.templatesResource.getRun<Row>(runId, opts);
+  }
+
+  /** Your template runs, newest first, without their rows. */
+  listTemplateRuns(params?: ListTemplateRunsParams): Promise<ListTemplateRunsResponse> {
+    return this.templatesResource.listRuns(params);
+  }
+
+  /** Airport and city codes for the Google Flights templates. */
+  lookupAirports(params: LookupAirportsParams): Promise<Airport[]> {
+    return this.templatesResource.lookupAirports(params);
+  }
+
+  // ---- Presets ---------------------------------------------------------
+
+  /** Your saved presets, newest first. */
+  listPresets(params?: ListPresetsParams): Promise<ListPresetsResponse> {
+    return this.presetsResource.list(params);
+  }
+
+  /** Save a template with its inputs, or any tool's request body, to run again with one call. */
+  createPreset(params: CreatePresetParams): Promise<{ id: string }> {
+    return this.presetsResource.create(params);
+  }
+
+  getPreset(presetId: string): Promise<Preset> {
+    return this.presetsResource.get(presetId);
+  }
+
+  /** Change a preset's name, description, inputs or saved request. Send only what changes. */
+  updatePreset(presetId: string, params: UpdatePresetParams): Promise<void> {
+    return this.presetsResource.update(presetId, params);
+  }
+
+  deletePreset(presetId: string): Promise<void> {
+    return this.presetsResource.delete(presetId);
+  }
+
+  /** Run a preset. Returns the template run, or the tool's own response for a tool preset. */
+  runPreset(presetId: string, params?: RunPresetParams): Promise<RunPresetResponse> {
+    return this.presetsResource.run(presetId, params);
+  }
+
+  // ---- Monitors --------------------------------------------------------
+
+  listMonitors(): Promise<Monitor[]> {
+    return this.monitorsResource.list();
+  }
+
+  /** Create a monitor. The first check runs straight away and records the starting point, without alerting. */
+  createMonitor(params: CreateMonitorParams): Promise<MonitorWriteResponse> {
+    return this.monitorsResource.create(params);
+  }
+
+  /** What a monitor would cost per check and per month, before you create it. Free. */
+  estimateMonitor(params: MonitorParams): Promise<MonitorEstimate> {
+    return this.monitorsResource.estimate(params);
+  }
+
+  /** How many monitors your plan allows and how often they can check. */
+  monitorLimits(): Promise<MonitorLimits> {
+    return this.monitorsResource.limits();
+  }
+
+  /** Send a sample alert to the channels in `notify`, to check them before saving a monitor. */
+  testMonitorNotification(params: TestNotificationParams): Promise<TestNotificationResponse> {
+    return this.monitorsResource.testNotification(params);
+  }
+
+  getMonitor(monitorId: string): Promise<Monitor> {
+    return this.monitorsResource.get(monitorId);
+  }
+
+  /** Change a monitor. Send only what changes; `notify` replaces all channels. */
+  updateMonitor(monitorId: string, params: UpdateMonitorParams): Promise<MonitorWriteResponse> {
+    return this.monitorsResource.update(monitorId, params);
+  }
+
+  /** Delete a monitor and its check history. */
+  deleteMonitor(monitorId: string): Promise<void> {
+    return this.monitorsResource.delete(monitorId);
+  }
+
+  /** Run a monitor's check now. It runs in the background; read it with `listMonitorChecks()`. */
+  checkMonitorNow(monitorId: string): Promise<{ message: string }> {
+    return this.monitorsResource.checkNow(monitorId);
+  }
+
+  pauseMonitor(monitorId: string): Promise<Monitor> {
+    return this.monitorsResource.pause(monitorId);
+  }
+
+  resumeMonitor(monitorId: string): Promise<Monitor> {
+    return this.monitorsResource.resume(monitorId);
+  }
+
+  /** A monitor's checks, newest first, with a summary of each. */
+  listMonitorChecks(monitorId: string, params?: ListMonitorChecksParams): Promise<ListMonitorChecksResponse> {
+    return this.monitorsResource.listChecks(monitorId, params);
+  }
+
+  /** One check with everything that changed, per source. */
+  getMonitorCheck(monitorId: string, checkId: string): Promise<MonitorCheck> {
+    return this.monitorsResource.getCheck(monitorId, checkId);
+  }
+
   // ---- Logs ----------------------------------------------------------
 
   /** List scrape logs for the authenticated user with optional filters. */
@@ -330,6 +544,31 @@ export class SpidraClient {
     return this.logsResource.get(uuid);
   }
 
+  /** List past searches, newest first. */
+  searchLogs(params?: LogListParams<SearchLogStatus>): Promise<SearchLogsResponse> {
+    return this.logsResource.searchLogs(params);
+  }
+
+  /** One past search with its results. */
+  getSearchLog(uuid: string): Promise<SearchLog> {
+    return this.logsResource.getSearchLog(uuid);
+  }
+
+  /** List past maps, newest first. */
+  mapLogs(params?: LogListParams<MapLogStatus>): Promise<MapLogsResponse> {
+    return this.logsResource.mapLogs(params);
+  }
+
+  /** One past map with the links it returned. */
+  getMapLog(uuid: string): Promise<MapLogDetail> {
+    return this.logsResource.getMapLog(uuid);
+  }
+
+  /** List parsed documents, newest first. Open a result with `getParse(jobId)`. */
+  parseLogs(params?: Omit<LogListParams<ParseLogStatus>, "dateStart" | "dateEnd">): Promise<ParseLogsResponse> {
+    return this.logsResource.parseLogs(params);
+  }
+
   // ---- Usage ----------------------------------------------------------
 
   /** Get usage statistics for the given time range ("7d" | "30d" | "weekly"). */
@@ -340,5 +579,10 @@ export class SpidraClient {
   /** Get your plan, remaining credits and proxy bandwidth. */
   account(): Promise<AccountSummary> {
     return this.usageResource.account();
+  }
+
+  /** Credits used each day, split by tool ("1d" | "7d" | "30d", or "custom" with start and end dates). */
+  usageBreakdown(params: UsageBreakdownParams): Promise<UsageBreakdownRow[]> {
+    return this.usageResource.breakdown(params);
   }
 }

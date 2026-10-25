@@ -33,3 +33,24 @@ export interface AccountSummary {
   /** `null` on the free plan with no subscription. */
   subscription: { status: string } | null;
 }
+
+export type UsageBreakdownRange = "1d" | "7d" | "30d" | "custom";
+
+export interface UsageBreakdownParams {
+  range: UsageBreakdownRange;
+  /** With `custom`: the first day, YYYY-MM-DD. */
+  startDate?: string;
+  /** With `custom`: the last day, YYYY-MM-DD. */
+  endDate?: string;
+}
+
+/** Credits used on one day, split by tool. Batch scrapes count under `scrapeCredits`. */
+export interface UsageBreakdownRow {
+  label: string;
+  date: string;
+  scrapeCredits: number;
+  crawlCredits: number;
+  searchCredits: number;
+  parseCredits: number;
+  mapCredits: number;
+}
