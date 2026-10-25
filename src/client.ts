@@ -4,7 +4,7 @@ import { BatchResource } from "./resources/batch.js";
 import { BulkResource } from "./resources/bulk.js";
 import { CrawlResource } from "./resources/crawl.js";
 import { ParseResource } from "./resources/parse.js";
-import type { ParseBatch, ParseEstimate, ParseInput, ParseJob, ParseOptions } from "./types/parse.js";
+import type { ParseBatch, ParseBatchStarted, ParseEstimate, ParseInput, ParseJob, ParseOptions } from "./types/parse.js";
 import { LogsResource } from "./resources/logs.js";
 import { UsageResource } from "./resources/usage.js";
 import { SearchResource } from "./resources/search.js";
@@ -174,6 +174,16 @@ export class SpidraClient {
   /** Parse several documents and wait for all of them. */
   parseBatch<T = unknown>(inputs: ParseInput[], options?: ParseOptions, pollOptions?: PollOptions): Promise<ParseBatch<T>> {
     return this.parseResource.runBatch<T>(inputs, options, pollOptions);
+  }
+
+  /** Queue several documents and return at once with a batchId. */
+  startParseBatch(inputs: ParseInput[], options?: ParseOptions): Promise<ParseBatchStarted> {
+    return this.parseResource.startBatch(inputs, options);
+  }
+
+  /** A parse batch's progress. `includeResults` adds each finished document's Markdown and JSON. */
+  getParseBatch<T = unknown>(batchId: string, opts?: { includeResults?: boolean }): Promise<ParseBatch<T>> {
+    return this.parseResource.getBatch<T>(batchId, opts);
   }
 
   /** Upload a large file (up to 500 MB) and get a fileId to parse. */

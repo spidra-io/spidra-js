@@ -166,3 +166,19 @@ describe("logs and usage", () => {
     expect(call(fetchMock, 0)).toMatchObject({ url: "https://api.test/search/s1", method: "DELETE" });
   });
 });
+
+describe("validation errors", () => {
+  it("turns { field, message } errors into readable strings", async () => {
+    const fetchMock = sequenceFetch(
+      jsonResponse(422, {
+        status: "error",
+        code: "INVALID_INPUT",
+        message: "Some inputs need fixing.",
+        errors: [{ field: "areas", message: "Areas is required." }],
+      })
+    );
+    const err = await catchError(makeClient(fetchMock).runTemplate("google-maps-leads", { inputs: {} }, POLL));
+    expect(err.errors).toEqual(["areas: Areas is required."]);
+    expect(err.code).toBe("INVALID_INPUT");
+  });
+});

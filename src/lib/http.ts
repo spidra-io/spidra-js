@@ -31,9 +31,14 @@ const MAX_RETRY_DELAY_MS = 30_000;
 interface ApiErrorBody {
   message?: string;
   code?: string;
-  errors?: string[];
+  /** Strings on most endpoints; `{ field, message }` objects on templates, presets and monitors. */
+  errors?: Array<string | { field?: string; message?: string }>;
   retry_after?: number;
 }
+
+/** Validation errors as readable strings, whichever form the endpoint used. */
+const errorStrings = (errors: ApiErrorBody["errors"]): string[] =>
+  (errors ?? []).map(e => (typeof e === "string" ? e : [e.field, e.message].filter(Boolean).join(": ")));
 
 const isFormData = (body: unknown): boolean => typeof FormData !== "undefined" && body instanceof FormData;
 
@@ -131,7 +136,8 @@ export class HttpClient {
   }
 
   private throwError(res: Response, body: ApiErrorBody): never {
-    const message = body.message ?? (body.errors?.length ? body.errors.join("; ") : res.statusText);
+    const errors = errorStrings(body.errors);
+    const message = body.message ?? (errors.length ? errors.join("; ") : res.statusText);
     const options = { code: body.code, details: body };
 
     switch (res.status) {
@@ -144,7 +150,7 @@ export class HttpClient {
       case 404:
         throw new SpidraNotFoundError(message, options);
       case 422:
-        throw new SpidraValidationError(message, body.errors ?? [], options);
+        throw new SpidraValidationError(message, errors, options);
       case 429:
         throw new SpidraRateLimitError(message, parseRateLimitHeaders(res.headers, body), options);
       default:
