@@ -71,6 +71,20 @@ describe("templates", () => {
     expect(call(fetchMock, 0).url).toBe("https://api.test/templates?site=amazon&q=rank");
   });
 
+  it("getTemplate and listTemplates return optionalFields next to fields", async () => {
+    const optionalFields = [{ field: "Emails", key: "emails", when: { input: "findEmails", equals: true } }];
+    const template = { slug: "google-maps-leads", fields: ["Name", "Phone"], optionalFields, inputs: [] };
+    const fetchMock = sequenceFetch(
+      jsonResponse(200, { status: "success", template }),
+      jsonResponse(200, { status: "success", templates: [template], categories: [], sites: [] })
+    );
+    const client = makeClient(fetchMock);
+    const detail = await client.getTemplate("google-maps-leads");
+    expect(detail.optionalFields).toEqual(optionalFields);
+    const { templates } = await client.listTemplates();
+    expect(templates[0].optionalFields?.[0].when.input).toBe("findEmails");
+  });
+
   it("lookupAirports joins codes with commas", async () => {
     const fetchMock = sequenceFetch(jsonResponse(200, { status: "success", airports: [{ code: "JFK" }] }));
     await makeClient(fetchMock).lookupAirports({ codes: ["JFK", "LHR"] });
@@ -115,6 +129,17 @@ describe("monitors", () => {
     const result = await makeClient(fetchMock).createMonitor({ sources: [{ kind: "urls", urls: ["https://x.com"] }] });
     expect(result.monitor.id).toBe("m1");
     expect(call(fetchMock, 0)).toMatchObject({ url: "https://api.test/monitors", method: "POST" });
+  });
+
+  it("lists the account owner first in recipients with status owner", async () => {
+    const recipients = [
+      { email: "me@example.com", status: "owner" },
+      { email: "team@example.com", status: "pending" },
+    ];
+    const fetchMock = sequenceFetch(jsonResponse(200, { status: "success", monitor, recipients }));
+    const result = await makeClient(fetchMock).updateMonitor("m1", { notify: { email: { recipients: ["team@example.com"] } } });
+    expect(result.recipients[0].status).toBe("owner");
+    expect(result.recipients).toHaveLength(2);
   });
 
   it("pause, resume, check now and delete hit the right paths", async () => {

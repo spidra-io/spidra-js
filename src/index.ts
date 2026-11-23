@@ -127,6 +127,7 @@ export type {
   TemplateSite,
   TemplateSummary,
   TemplateInput,
+  TemplateOptionalField,
   TemplateDetail,
   ListTemplatesParams,
   ListTemplatesResponse,
@@ -175,6 +176,10 @@ export type {
 export type { PollOptions } from "./lib/poll.js";
 export type {
   SearchSource,
+  SearchTimeRange,
+  SearchFiletype,
+  SearchLanguage,
+  SearchDeveloperType,
   SearchScrapeOptions,
   SearchParams,
   SearchResultItem,

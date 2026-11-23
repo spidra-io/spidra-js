@@ -102,7 +102,7 @@ By default only `web` results come back. Request more with `sources`:
 | `images` | Image results |
 | `videos` | Video results |
 | `research` | Academic papers from arXiv, PubMed, bioRxiv, and medRxiv |
-| `developer` | GitHub issues and PRs. |
+| `developer` | GitHub issues and PRs, plus repositories and users with `developerTypes`. |
 
 Each source is independent. If one comes back empty or is temporarily unavailable, the others are unaffected.
 
@@ -112,14 +112,19 @@ Each source is independent. If one comes back empty or is temporarily unavailabl
 |-----------|------|-------------|
 | `query` | `string` | **Required.** What to search for. |
 | `sources` | `("web" \| "news" \| "images" \| "videos" \| "research" \| "developer")[]` | Which result types to request. Defaults to `["web"]`. |
-| `limit` | `number` | Results per source, 1–20. Defaults to 10. |
-| `page` | `number` | 1-indexed page number. Prefer `pageTokens` once you have one, it's a more reliable way to continue to the next page than a bare page number. |
+| `limit` | `number` | The most results per source, 1 to 20. Defaults to 10. A source with fewer matches returns fewer. |
+| `page` | `number` | 1-indexed page number, 1 to 5. Prefer `pageTokens` once you have one, it's a more reliable way to continue to the next page than a bare page number. |
 | `pageTokens` | `Partial<Record<Source, string>>` | Opaque per-source token from a prior response's `nextPageTokens`, for reliably continuing to that source's next page. |
-| `timeRange` | `"hour" \| "day" \| "week" \| "month" \| "year"` | Restricts results to a recency window. Support can vary by source and query, and a window that can't be honored is simply ignored. |
+| `timeRange` | `"hour" \| "day" \| "week" \| "month" \| "year"` | Favors results from a recency window. Web, news, images and videos. Not with `startDate`/`endDate`. |
+| `startDate` / `endDate` | `string` | Only results from this date range, as `YYYY-MM-DD`. Either end can be left out. Web, news and videos. |
+| `sort` | `"relevance" \| "date"` | `"date"` returns news newest first. News only. |
+| `safeSearch` | `"off" \| "strict"` | `"strict"` filters adult results out. Defaults to `"off"`. Web, news, images and videos. |
+| `language` | `string` | Prefer pages in this language, such as `"de"` (ISO 639-1, or `"zh-CN"` / `"zh-TW"`), whatever the `country`. Web, news and videos. |
 | `country` | `string` | Two-letter country code, or `"global"` / `"eu"` / `"asia"`, for localized results. |
 | `includeDomains` | `string[]` | Only return `web` results from these domains. Mutually exclusive with `excludeDomains`. Doesn't apply to `research`/`developer`. |
 | `excludeDomains` | `string[]` | Keep `web` results from these domains out. Mutually exclusive with `includeDomains`. Doesn't apply to `research`/`developer`. |
-| `filetype` | `"pdf"` | Restricts results to PDFs. |
+| `filetype` | `"pdf" \| "doc" \| "docx" \| "xls" \| "xlsx" \| "ppt" \| "pptx" \| "txt" \| "csv" \| "rtf" \| "odt" \| "ods" \| "odp" \| "epub"` | Only web results that are files of this type. Every result is checked. |
+| `developerTypes` | `("issues" \| "repositories" \| "users")[]` | For the `developer` source: which GitHub results to return. Defaults to `["issues"]` (issues and pull requests). |
 | `scrapeOptions` | `{ formats, maxResults? }` | Opt-in, also scrapes each web result's page content (see below). |
 
 ### Research and developer sources
@@ -146,18 +151,32 @@ const result = await spidra.search({
 });
 ```
 
+Add `developerTypes` to get repositories or users too. Each type returns up to `limit` results:
+
+```typescript
+const result = await spidra.search({
+  query: "headless browser",
+  sources: ["developer"],
+  developerTypes: ["repositories", "issues"],
+});
+```
+
 > `includeDomains`, `excludeDomains`, and `filetype` only apply to `web`/`news`/`images`/`videos`. They're not supported on `research` or `developer`.
 
 ### Pagination and time range
 
-Pass the previous response's `nextPageTokens` back as `pageTokens` to get the next page of a specific source:
+Pass the previous response's `nextPageTokens` back as `pageTokens` to get the next page of a specific source. A source only has a token when it really has a next page, so when there's no token, stop:
 
 ```typescript
-const page1 = await spidra.search({ query: "espresso machine reviews", limit: 10 });
-const page2 = await spidra.search({
-  query: "espresso machine reviews",
-  pageTokens: page1.data.nextPageTokens,
-});
+import type { SearchResult } from "spidra";
+
+let pageTokens: SearchResult["data"]["nextPageTokens"];
+for (let i = 0; i < 3; i++) {
+  const page = await spidra.search({ query: "espresso machine reviews", limit: 10, pageTokens });
+  console.log(page.data.web?.length);
+  pageTokens = page.data.nextPageTokens;
+  if (!pageTokens?.web) break; // no more web results
+}
 ```
 
 `timeRange` narrows results to a recency window, useful for sources like `news` where older results matter less:
@@ -168,6 +187,25 @@ const result = await spidra.search({
   sources: ["news"],
   timeRange: "week",
 });
+```
+
+### Language, dates, sort and safe search
+
+`language`, `startDate`/`endDate`, `sort`, `safeSearch` and `filetype` each apply to some sources (see the table above). When you ask for several sources and one of them can't apply an option, that source runs without it and the result's `warnings` says so. If none of the sources you asked for can apply an option, the request fails with a 422 and nothing is charged.
+
+```typescript
+const result = await spidra.search({
+  query: "electric vehicle subsidies",
+  sources: ["web", "news"],
+  language: "de",
+  startDate: "2026-01-01",
+  endDate: "2026-06-30",
+  sort: "date",
+  safeSearch: "strict",
+});
+
+console.log(result.creditsUsed); // what this search cost
+console.log(result.warnings);    // e.g. ["sort doesn't apply to web results, so they came back without it."]
 ```
 
 ### Domain filtering
@@ -241,6 +279,8 @@ Each entry in `result.data` describes one URL, in the order you sent them:
 - `structuredData` is an object with the page's fields, present when the URL was handled by one of Spidra's site scrapers (Amazon, LinkedIn, Google Maps and others). The markdown does not include this data, so read it here.
 - `warnings` lists anything you asked for that was not done, such as `"deliveryZip was not applied to this page."`
 - `actionResults` reports each browser action, when the URL had any (see [Action results](#action-results)).
+
+`result.creditsUsed` is what the job cost. `getScrape()` also reports it at the top level, and a failed job reports 0 (failed jobs are refunded). A page that answered with an HTTP error but still had content (a site's own 404 page) has `httpStatus` on its `result.data` entry.
 
 With `output: "json"` and no prompt or schema, a site scraper URL returns its `structuredData` as is, with no AI involved. Other URLs go through the default AI extraction. With several URLs, `result.content` is an array in request order.
 
@@ -625,9 +665,9 @@ for (const item of batch.items) {
 }
 ```
 
-Item statuses: `pending`, `running`, `completed`, `failed`.
+Item statuses: `pending`, `running`, `completed`, `failed`. The batch ends `completed` when at least one URL completed, and `failed` when every URL failed. `batchScrape()` returns both; it doesn't throw for a failed batch.
 
-Batch `output` defaults to `"markdown"`, and passing a `schema` forces `"json"`. When a URL was handled by one of Spidra's site scrapers, its item also has a `structuredData` object.
+Batch `output` defaults to `"markdown"`, and passing a `schema` forces `"json"`. When a URL was handled by one of Spidra's site scrapers, its item also has a `structuredData` object. A completed item can also have `httpStatus` (the page answered with an HTTP error such as 404 but had content) and `extractionEmpty: true` (a prompt or schema ran and found nothing on the page).
 
 If some URLs fail (a site was down, a page timed out), you don't have to resubmit the whole batch. Re-queue just the failed items:
 
@@ -913,6 +953,8 @@ console.log(run.status, run.rowCount, run.creditsUsed);
 console.log(run.rows?.[0]);
 ```
 
+A template's `fields` are what every row has. Some templates also list `optionalFields`, fields a row only has when an input is set, each with the input that turns it on (`{ field, key, when }`).
+
 `runTemplate()` asks the API to wait first, so a quick run often finishes in that one call; longer ones are polled for you. A `partial` run (some pages failed) still returns its rows, with the failed pages in `failures`. A failed run throws `SpidraJobError`.
 
 To manage the run yourself, use `startTemplateRun()` and `getTemplateRun(runId, { rows: false })` while it runs. `listTemplateRuns()` lists past runs, and `lookupAirports({ q: "lagos" })` finds the codes the Google Flights templates take.
@@ -966,6 +1008,8 @@ console.log(await spidra.estimateMonitor(monitor));
 
 const { monitor: created } = await spidra.createMonitor(monitor);
 ```
+
+`createMonitor()` and `updateMonitor()` return `recipients`: your account's address first with status `"owner"` while email alerts are on, then any extra addresses with `"pending"`, `"confirmed"` or `"unsubscribed"`.
 
 The first check runs straight away and records the starting point without alerting (send `checkNow: false` to wait for the schedule). Webhooks are signed with `X-Spidra-Signature`; check them with `verifySpidraWebhook()`.
 

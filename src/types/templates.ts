@@ -31,9 +31,21 @@ export interface TemplateSummary {
   status?: "active" | "beta";
   /** Names of the fields each row has. */
   fields?: string[];
+  /** Fields a row only has when an input has a given value (contact fields when "Find emails" is on, say). Present only on templates that have such fields. */
+  optionalFields?: TemplateOptionalField[];
   usesAi?: boolean;
   /** Set when the template is paused or has a notice, with a message saying why. */
   availability?: { state: "notice" | "off"; message: string | null } | null;
+}
+
+/** A field that only appears in rows when an input has a given value. */
+export interface TemplateOptionalField {
+  /** The field's name, as in `fields`. */
+  field: string;
+  /** The path to the value in a row, such as `"socials.instagram"`. */
+  key: string;
+  /** The input and value that turn it on. */
+  when: { input: string; equals?: string | number | boolean; in?: Array<string | number | boolean> };
 }
 
 /** One field of a template's form. Send its value under `key` in `inputs`. */

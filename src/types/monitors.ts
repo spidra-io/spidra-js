@@ -79,12 +79,13 @@ export interface Monitor {
 
 export interface MonitorRecipient {
   email: string;
-  status: "pending" | "confirmed" | "unsubscribed";
+  /** `"owner"` is your account's own address, listed first while email alerts are on. */
+  status: "owner" | "pending" | "confirmed" | "unsubscribed";
 }
 
 export interface MonitorWriteResponse {
   monitor: Monitor;
-  /** Extra email recipients and whether they've confirmed. */
+  /** Who gets email alerts: your account's address (status `"owner"`) while email is on, then extra recipients and whether they've confirmed. */
   recipients: MonitorRecipient[];
 }
 

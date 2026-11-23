@@ -29,13 +29,13 @@ export class SearchResource {
    * Throws `SpidraJobError` if the job fails, and `SpidraTimeoutError` if
    * `options.timeout` is set and exceeded.
    *
-   * Sends `wait: true` on the initial request -- for a plain search (no
-   * `scrapeOptions`) that usually finishes in a couple seconds, the API can
-   * respond with the real result in this same call, skipping the poll loop
-   * below entirely. `scrapeOptions` searches (and anything that doesn't
-   * finish within the API's own wait window) fall back to the normal
-   * queued response automatically, and this method transparently continues
-   * polling from there -- the caller never has to know which path happened.
+   * Sends `wait: true` on the initial request -- a search that finishes
+   * within the API's wait window (about 20 seconds, which covers most plain
+   * searches) comes back with the real result in this same call, skipping
+   * the poll loop below entirely. Anything slower, such as a big
+   * `scrapeOptions` search, falls back to the normal queued response
+   * automatically, and this method transparently continues polling from
+   * there -- the caller never has to know which path happened.
    */
   async run(params: SearchParams, options?: PollOptions): Promise<SearchJobCompleted> {
     const submitted = await this.http.post<SearchJobQueued | SearchJobCompleted | SearchJobFailed>("/search", {

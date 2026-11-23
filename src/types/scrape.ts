@@ -312,6 +312,8 @@ export interface ScrapeUrlResult {
   screenshotUrl?: string | null;
   /** Heuristic warning, not a hard failure: the cleaned content came back under ~200 characters, more likely a bot check, cookie wall, or dead redirect than the real page. */
   lowContent?: boolean;
+  /** The page's HTTP status, present only when it was 400 or above but the page still had content (a site's own 404 page, for example). */
+  httpStatus?: number;
   /** The page's fields as an object, present when the URL was handled by one of Spidra's site scrapers (Amazon, LinkedIn, Google Maps and others). Markdown output does not include this data; read it here. */
   structuredData?: Record<string, unknown>;
   /** The cleaned link a site scraper actually used (tracking parameters removed, short link resolved), present only when it differs from `url`. `url` is always the URL you sent. */
@@ -333,6 +335,8 @@ export interface ScrapeResult<T = unknown> {
   extraction_empty?: boolean;
   /** Everything worth knowing that didn't fail the job, across all URLs: skipped optional actions, a forEach that fell back or stopped early, credits that ran short. With several URLs, each line starts with its URL. */
   warnings?: string[];
+  /** Credits this job used. */
+  creditsUsed?: number;
   stats: {
     durationMs: number;
     captchaSolvedCount: number;
@@ -345,6 +349,8 @@ export interface ScrapeResult<T = unknown> {
 export interface ScrapeJobPending {
   status: "waiting" | "active";
   progress?: { message: string; progress: number };
+  /** `null` until the job finishes. */
+  creditsUsed?: null;
   schema_warnings?: string[];
 }
 
@@ -353,12 +359,16 @@ export interface ScrapeJobCompleted<T = unknown> {
   progress?: { message: string; progress: number };
   result: ScrapeResult<T>;
   error: null;
+  /** Credits this job used, the same as `result.creditsUsed`. `null` for a job that finished before the field existed. */
+  creditsUsed?: number | null;
   schema_warnings?: string[];
 }
 
 export interface ScrapeJobFailed {
   status: "failed";
   error: string;
+  /** Always 0: a failed job is refunded. */
+  creditsUsed?: number;
   schema_warnings?: string[];
 }
 

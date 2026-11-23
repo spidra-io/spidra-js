@@ -1,17 +1,47 @@
 /**
  * `research` (arXiv, PubMed, bioRxiv, medRxiv) and `developer` (GitHub
- * issues/PRs) are two dedicated, sanctioned APIs. `includeDomains`/
- * `excludeDomains`/`filetype` don't apply to either.
+ * issues, pull requests, repositories and users) are two dedicated,
+ * sanctioned APIs. `includeDomains`/`excludeDomains`/`filetype` don't apply
+ * to either.
  */
 export type SearchSource = "web" | "news" | "images" | "videos" | "research" | "developer";
 
 /**
- * Restricts results to a recency window. Support and granularity can vary
- * by source and query. A window that can't be honored is simply ignored
- * rather than erroring, so you may occasionally see slightly wider results
- * than requested.
+ * Favors results from a recency window (web, news, images and videos). It
+ * shapes results rather than strictly filtering them. When you ask for
+ * several sources and one can't apply it, that source runs without it and
+ * the result's `warnings` says so; when none can, the request fails with 422.
  */
 export type SearchTimeRange = "hour" | "day" | "week" | "month" | "year";
+
+/** File types `filetype` accepts. Every web result is checked against it. */
+export type SearchFiletype =
+  | "pdf"
+  | "doc"
+  | "docx"
+  | "xls"
+  | "xlsx"
+  | "ppt"
+  | "pptx"
+  | "txt"
+  | "csv"
+  | "rtf"
+  | "odt"
+  | "ods"
+  | "odp"
+  | "epub";
+
+/**
+ * Languages `language` accepts: ISO 639-1 codes, plus `zh-CN` and `zh-TW`.
+ * Typed as a union for autocomplete; the API rejects any other value.
+ */
+export type SearchLanguage =
+  | "ar" | "bg" | "ca" | "cs" | "da" | "de" | "el" | "en" | "es" | "et" | "fi" | "fr" | "he"
+  | "hr" | "hu" | "id" | "is" | "it" | "ja" | "ko" | "lt" | "lv" | "nl" | "no" | "pl" | "pt"
+  | "ro" | "ru" | "sk" | "sl" | "sr" | "sv" | "th" | "tr" | "uk" | "vi" | "zh-CN" | "zh-TW";
+
+/** Which GitHub results the `developer` source returns. `"issues"` covers issues and pull requests. */
+export type SearchDeveloperType = "issues" | "repositories" | "users";
 
 export interface SearchScrapeOptions {
   /** Markdown-only -- want a screenshot of a specific result? Scrape that URL directly with `client.scrape()` instead. */
@@ -24,22 +54,23 @@ export interface SearchParams {
   query: string;
   /** Which result sources to request. Default: `["web"]` */
   sources?: SearchSource[];
-  /** Results per source, 1–20. Default: 10 */
+  /** The most results per source, 1 to 20. A source with fewer matches returns fewer. Default: 10 */
   limit?: number;
   /**
-   * 1-indexed, default 1. Prefer `pageTokens` once you have one from a
-   * prior response, it's a more reliable way to continue to a specific
-   * page than passing `page` alone.
+   * 1-indexed, 1 to 5, default 1. Prefer `pageTokens` once you have one
+   * from a prior response, it's a more reliable way to continue to a
+   * specific page than passing `page` alone.
    */
   page?: number;
   /**
    * One opaque token per source, taken from an earlier response's
    * `nextPageTokens`, for reliably continuing to that source's next page.
-   * Falls back to a normal fresh search for that source if the token can't
-   * be used (e.g. it expired). Never a hard error.
+   * Send it with the same query and options. Falls back to a normal fresh
+   * search for that source if the token can't be used (e.g. it expired).
+   * Never a hard error.
    */
   pageTokens?: Partial<Record<SearchSource, string>>;
-  /** Restricts results to a recency window. See `SearchTimeRange`. */
+  /** Favors results from a recency window. See `SearchTimeRange`. Not with `startDate`/`endDate`. */
   timeRange?: SearchTimeRange;
   /** ISO country code (e.g. "us"), or "global" / "eu" / "asia" */
   country?: string;
@@ -47,19 +78,37 @@ export interface SearchParams {
   includeDomains?: string[];
   /** Mutually exclusive with `includeDomains`. Doesn't apply to `research`/`developer` sources. */
   excludeDomains?: string[];
-  /** Restricts results to PDF files. Doesn't apply to `research`/`developer` sources. */
-  filetype?: "pdf";
+  /** Only web results that are files of this type. Every result is checked. Web only. */
+  filetype?: SearchFiletype;
+  /** `"strict"` filters adult results out. `"off"` (the default) doesn't filter. Web, news, images and videos. */
+  safeSearch?: "off" | "strict";
+  /** Prefer pages in this language, such as `"de"`, whatever the `country`. Web, news and videos. */
+  language?: SearchLanguage;
+  /**
+   * Only results on or after this date, as `YYYY-MM-DD`. Either end of the
+   * range can be left out. Can't be in the future. Web, news and videos.
+   * Not with `timeRange`.
+   */
+  startDate?: string;
+  /** Only results on or before this date, as `YYYY-MM-DD`. See `startDate`. */
+  endDate?: string;
+  /** `"date"` returns news newest first. News only. Default: `"relevance"` */
+  sort?: "relevance" | "date";
+  /**
+   * For the `developer` source: which GitHub results to return, in this
+   * order. Each type returns up to `limit` results. Default: `["issues"]`
+   */
+  developerTypes?: SearchDeveloperType[];
   /** Opt-in search + scrape enrichment, modeled on Firecrawl's `scrapeOptions`. */
   scrapeOptions?: SearchScrapeOptions;
   /**
    * Ask the API to hold the request open and respond with the real result
    * directly, instead of always requiring a poll. `client.search()` already
    * sets this internally, so you won't normally set it yourself. It's
-   * exposed mainly for `startSearch()`/raw HTTP use. Ignored when
-   * `scrapeOptions` is set (that case can take much longer than any
-   * request can safely stay open), and falls back to the normal queued
-   * response if the search doesn't finish within the wait window
-   * (~20 seconds). Never a hard error either way.
+   * exposed mainly for `startSearch()`/raw HTTP use. Works with
+   * `scrapeOptions` too, and falls back to the normal queued response if
+   * the search doesn't finish within the wait window (~20 seconds). Never
+   * a hard error either way.
    */
   wait?: boolean;
 }
@@ -113,8 +162,9 @@ export interface SearchResponseData {
   /**
    * One opaque, per-source token for reliably fetching the next page of
    * this exact result set. Pass it back as `pageTokens` on a following
-   * request instead of just bumping `page`. Absent for a source that
-   * didn't succeed, or with no more pages left.
+   * request instead of just bumping `page`. A source only has a token when
+   * it really has a next page: no token means that source has no more
+   * results (or didn't succeed), so stop paging it.
    */
   nextPageTokens?: Partial<Record<SearchSource, string>>;
 }
@@ -127,6 +177,17 @@ export interface SearchResult {
   success: boolean;
   data: SearchResponseData;
   stats: SearchStats;
+  /**
+   * What this search was charged: 1 credit per 10 results per source
+   * (rounded up, empty sources free), plus 1 per page read with
+   * `scrapeOptions`.
+   */
+  creditsUsed: number;
+  /**
+   * One plain sentence per option a requested source couldn't apply (that
+   * source ran without it). Absent when there are none.
+   */
+  warnings?: string[];
   /**
    * The search log this result is recorded under. Nothing needs to be done
    * with this for pagination to work -- continuing with `pageTokens` keeps

@@ -43,6 +43,10 @@ export interface BatchItem<T = unknown> {
   screenshotUrl: string | null;
   /** The page's fields as an object, present when the URL was handled by one of Spidra's site scrapers. */
   structuredData?: Record<string, unknown>;
+  /** On a completed item: the page's HTTP status, present only when it was 400 or above but the page still had content (a site's own 404 page, for example). */
+  httpStatus?: number;
+  /** On a completed item: true when a prompt or schema ran and found nothing on the page. */
+  extractionEmpty?: boolean;
 }
 
 export interface BatchRetryParams {
@@ -60,6 +64,7 @@ export interface BatchRetryResponse {
 export type BatchStatus = "pending" | "running" | "completed" | "failed" | "cancelled";
 
 export interface BatchScrapeResponse<T = unknown> {
+  /** `"failed"` when every URL in the batch failed. A batch with at least one completed URL ends `"completed"`. */
   status: BatchStatus;
   totalUrls: number;
   completedCount: number;

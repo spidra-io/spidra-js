@@ -72,6 +72,33 @@ describe("scrape", () => {
     const status = await client.getScrape(queued.jobId);
     expect(status.status).toBe("active");
   });
+
+  it("returns creditsUsed on the result and on the job, and 0 on a failed job", async () => {
+    const fetchMock = sequenceFetch(
+      jsonResponse(202, { status: "queued", jobId: "j1" }),
+      jsonResponse(200, {
+        status: "completed",
+        result: {
+          content: "# Hi",
+          data: [{ url: "https://x.com/missing", success: true, httpStatus: 404 }],
+          screenshots: [],
+          ai_extraction_failed: false,
+          creditsUsed: 1,
+        },
+        error: null,
+        creditsUsed: 1,
+      }),
+      jsonResponse(200, { status: "failed", error: "blocked", creditsUsed: 0 })
+    );
+    const client = makeClient(fetchMock);
+    const result = await client.scrape({ urls: [{ url: "https://x.com/missing" }] }, POLL);
+    expect(result.creditsUsed).toBe(1);
+    expect(result.data[0].httpStatus).toBe(404);
+
+    const failed = await client.getScrape("j2");
+    expect(failed.status).toBe("failed");
+    if (failed.status === "failed") expect(failed.creditsUsed).toBe(0);
+  });
 });
 
 describe("crawl", () => {
@@ -241,6 +268,41 @@ describe("batchScrape", () => {
     expect(res.status).toBe("completed");
     expect(res.failedCount).toBe(1);
   });
+
+  it("returns a failed batch (every URL failed) instead of throwing, with httpStatus and extractionEmpty on items", async () => {
+    const fetchMock = sequenceFetch(
+      jsonResponse(202, { status: "queued", batchId: "b2", total: 2 }),
+      jsonResponse(200, {
+        status: "failed",
+        totalUrls: 2,
+        completedCount: 0,
+        failedCount: 2,
+        createdAt: "2026-11-23T00:00:00Z",
+        finishedAt: "2026-11-23T00:01:00Z",
+        items: [
+          { uuid: "i1", url: "https://a.com", status: "failed", error: "blocked", creditsUsed: 0 },
+          { uuid: "i2", url: "https://b.com", status: "failed", error: "timeout", creditsUsed: 0 },
+        ],
+      }),
+      jsonResponse(200, {
+        status: "completed",
+        totalUrls: 1,
+        completedCount: 1,
+        failedCount: 0,
+        createdAt: "2026-11-23T00:00:00Z",
+        finishedAt: "2026-11-23T00:01:00Z",
+        items: [{ uuid: "i3", url: "https://c.com/gone", status: "completed", result: {}, creditsUsed: 1, httpStatus: 404, extractionEmpty: true }],
+      })
+    );
+    const client = makeClient(fetchMock);
+    const res = await client.batchScrape({ urls: ["https://a.com", "https://b.com"] }, POLL);
+    expect(res.status).toBe("failed");
+    expect(res.failedCount).toBe(2);
+
+    const other = await client.getBatchScrape("b3");
+    expect(other.items[0].httpStatus).toBe(404);
+    expect(other.items[0].extractionEmpty).toBe(true);
+  });
 });
 
 describe("search", () => {
@@ -351,6 +413,66 @@ describe("search", () => {
     expect(result.data.research?.[0].doi).toBe("10.1101/x");
     expect(result.data.developer?.[0].authors).toBe("octocat");
     expect(result.data.nextPageTokens?.research).toBe("next-token");
+  });
+
+  it("passes safeSearch, language, startDate/endDate, sort, a wider filetype and developerTypes through", async () => {
+    const fetchMock = sequenceFetch(
+      jsonResponse(200, { status: "completed", result: { success: true, data: { news: [] }, stats: { durationMs: 500 }, creditsUsed: 0 }, error: null })
+    );
+    const client = makeClient(fetchMock);
+    await client.search(
+      {
+        query: "quarterly results",
+        sources: ["web", "news", "developer"],
+        safeSearch: "strict",
+        language: "de",
+        startDate: "2026-01-01",
+        endDate: "2026-06-30",
+        sort: "date",
+        filetype: "docx",
+        developerTypes: ["repositories", "issues"],
+      },
+      POLL
+    );
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const submittedBody = JSON.parse(init.body as string);
+    expect(submittedBody).toMatchObject({
+      safeSearch: "strict",
+      language: "de",
+      startDate: "2026-01-01",
+      endDate: "2026-06-30",
+      sort: "date",
+      filetype: "docx",
+      developerTypes: ["repositories", "issues"],
+    });
+  });
+
+  it("returns creditsUsed and warnings, and no nextPageTokens entry for a source with no next page", async () => {
+    const fetchMock = sequenceFetch(
+      jsonResponse(200, {
+        status: "completed",
+        result: {
+          success: true,
+          data: {
+            web: [{ title: "A", url: "https://a.com", position: 1 }],
+            news: [{ title: "B", url: "https://b.com", position: 1 }],
+            nextPageTokens: { web: "next-web" },
+          },
+          stats: { durationMs: 900 },
+          creditsUsed: 2,
+          warnings: ["sort doesn't apply to web results, so they came back without it."],
+        },
+        error: null,
+      })
+    );
+    const client = makeClient(fetchMock);
+    const result = await client.search({ query: "launch", sources: ["web", "news"], sort: "date" }, POLL);
+
+    expect(result.creditsUsed).toBe(2);
+    expect(result.warnings).toEqual(["sort doesn't apply to web results, so they came back without it."]);
+    expect(result.data.nextPageTokens?.web).toBe("next-web");
+    expect(result.data.nextPageTokens?.news).toBeUndefined();
   });
 
   it("sends wait: true on the initial request", async () => {
